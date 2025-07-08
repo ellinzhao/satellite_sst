@@ -102,4 +102,4 @@ class MMRecon(nn.Module):
 
         x_lr = self.lr_decoder(lr_feat)
         x_hr = self.hr_decoder(hr_feat)
-        return x_hr, x_lr
+        return torch.cat([x_hr, x_lr], dim=1)

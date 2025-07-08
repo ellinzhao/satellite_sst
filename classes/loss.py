@@ -38,7 +38,11 @@ class FullLoss(nn.Module):
         target = self.inverse_tform(target)
         sst_loss = self.masked_l1(pred, target)
 
-        pred_grad = gradient(pred, axis=(-2, -1))  # B, C, H, W
-        target_grad = gradient(target, axis=(-2, -1))
-        grad_loss = self.masked_l1(pred_grad, target_grad)
+        # Hacky way of toggling the gradient loss
+        if self.grad_weight == 0:
+            grad_loss = 0
+        else:
+            pred_grad = gradient(pred, axis=(-2, -1))  # B, C, H, W
+            target_grad = gradient(target, axis=(-2, -1))
+            grad_loss = self.masked_l1(pred_grad, target_grad)
         return self.sst_weight * sst_loss + self.grad_weight * grad_loss

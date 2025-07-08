@@ -6,8 +6,23 @@ import torch
 import xarray as xr
 from torch.utils.data import Dataset
 
+from ..util import resolution_components
+
 
 DS_CACHE = {}
+
+
+def masked_mean(sst, cloud):
+    return sst[~cloud].mean()
+
+
+def debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud):
+    ir_nan = ir_cloud | torch.isnan(ir_sst)
+    mw_nan = mw_cloud | torch.isnan(mw_sst)
+
+    # Debias the MW data
+    mw_sst = mw_sst - mw_sst[~mw_nan].mean() + ir_sst[~ir_nan].mean()
+    return mw_sst
 
 
 class SSTDataset(Dataset):
@@ -76,15 +91,13 @@ class SSTDataset(Dataset):
         method = self.fill['method']
         ir_sst, mw_sst = torch.unbind(sst)
         ir_cloud, mw_cloud = torch.unbind(cloud)
+        if method != 'constant':
+            mean_sst = 0.5 * (masked_mean(ir_sst, ir_cloud) + masked_mean(mw_sst, mw_cloud))
+
         if method == 'tile_mean':
-            tile_mean = 0.5 * (ir_sst[~ir_cloud].mean() + mw_sst[~mw_cloud].mean())
-            fill = tile_mean
-        elif method == 'gaussian':
-            tile_mean = 0.5 * (ir_sst[~ir_cloud].mean() + mw_sst[~mw_cloud].mean())
-            tile_std = 0.5 * (ir_sst[~ir_cloud].std() + mw_sst[~mw_cloud].std())
-            fill = torch.normal(tile_mean, tile_std, size=sst.shape)
+            fill = mean_sst
         elif method == 'microwave':
-            fill = tile_mean = 0.5 * (ir_sst[~ir_cloud].mean() + mw_sst[~mw_cloud].mean())
+            fill = mean_sst
             fill = torch.where(mw_cloud, fill, mw_sst)
             fill = torch.stack([fill, fill])
         elif method == 'constant':
@@ -98,20 +111,19 @@ class SSTDataset(Dataset):
         ir_cloud, mw_cloud = self.get_ir_mw_pair(self.cloud_dir, row['cloud_ir'], row['cloud_mw'])
         ir_cloud = ir_cloud > 0
         mw_cloud = mw_cloud > 0
-        ir_nan = ir_cloud | torch.isnan(ir_sst)
-        mw_nan = mw_cloud | torch.isnan(mw_sst)
-        mw_sst = mw_sst - mw_sst[~mw_nan].mean() + ir_sst[~ir_nan].mean()
 
+        mw_sst = debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud)
         sst = torch.stack([ir_sst, mw_sst])
         mask = torch.stack([ir_cloud, mw_cloud])
         if self.transform is not None:
             sst = self.transform['sst'](sst)
             mask = self.transform['cloud'](mask)
-        mask = mask | torch.isnan(sst)  # after the transform, check for nans
-        ir_sst, mw_sst = sst[0], sst[1]
-        sst_gt = torch.stack([mw_sst - ir_sst, mw_sst], dim=0)
+
+        # Since data is randomly flipped, check for nans AFTER applying tform
+        mask = mask | torch.isnan(sst)
+
+        sst_gt = resolution_components(sst)
         sst_input = self.init_gaps(sst, mask)
-        # sst_gt = torch.where(torch.isnan(sst_gt), 0, sst_gt)
         return sst_input, sst_gt
 
     def get_ir_mw_pair(self, data_dir, ir_fname, mw_fname):
