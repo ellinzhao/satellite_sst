@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
-from torchvision.transforms import Resize
+from torchvision.transforms import Resize, RandomHorizontalFlip, RandomVerticalFlip
 
 from .smooth_fill import smooth_fill
 
@@ -127,13 +127,15 @@ class SSTDataset(Dataset):
     def _random_flip(self, ir, mw):
         if self.split == 'train':
             if torch.rand(1).item() > 0.5:
+                vflip = RandomVerticalFlip(1)
                 # Random vertical flip
-                ir = ir[::-1]
-                mw = mw[::-1]
+                ir = vflip(ir)
+                mw = vflip(mw)
             if torch.rand(1).item() > 0.5:
+                hflip = RandomHorizontalFlip(1)
                 # Random horizontal flip
-                ir = ir[:, ::-1]
-                mw = mw[:, ::-1]
+                ir = hflip(ir)
+                mw = hflip(mw)
         return ir, mw
 
     def _transform_data(self, ir_sst, mw_sst, ir_cloud, mw_cloud):
