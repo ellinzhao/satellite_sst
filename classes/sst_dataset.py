@@ -5,11 +5,33 @@ import pandas as pd
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
+from torchvision.transforms import Resize
 
-from ..util import resolution_components
+from .smooth_fill import smooth_fill
 
 
 DS_CACHE = {}
+
+
+def add_channel_dim(x):
+    if x.ndim < 2 or x.ndim > 3:
+        raise IndexError(f'Input has {x.ndim} dims, expected 2 or 3')
+    elif x.ndim == 2:
+        x = x.unsqueeze(0)
+    return x
+
+
+def downsample(ir, cloud_mask=None):
+    if cloud_mask is None:
+        pool = torch.nn.AvgPool2d(11, count_include_pad=False, padding=4)
+        return pool(ir)
+    pool = torch.nn.AvgPool2d(11, divisor_override=1, padding=4)
+    return pool(torch.where(cloud_mask, 0, ir)) / pool((~cloud_mask).float())
+
+
+def upsample(mw):
+    up = Resize(112)
+    return up(mw)
 
 
 def masked_mean(sst, cloud):
@@ -19,9 +41,12 @@ def masked_mean(sst, cloud):
 def debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud):
     ir_nan = ir_cloud | torch.isnan(ir_sst)
     mw_nan = mw_cloud | torch.isnan(mw_sst)
+    ir_nan = downsample(ir_nan.float()) > 0
+    ir_sst = downsample(ir_sst)
+    both_clear = (~ir_nan) & (~mw_nan)
 
     # Debias the MW data
-    mw_sst = mw_sst - mw_sst[~mw_nan].mean() + ir_sst[~ir_nan].mean()
+    mw_sst = mw_sst - mw_sst[both_clear].mean() + ir_sst[both_clear].mean()
     return mw_sst
 
 
@@ -89,21 +114,37 @@ class SSTDataset(Dataset):
 
     def init_gaps(self, sst, cloud):
         method = self.fill['method']
-        ir_sst, mw_sst = torch.unbind(sst)
-        ir_cloud, mw_cloud = torch.unbind(cloud)
-        if method != 'constant':
-            mean_sst = 0.5 * (masked_mean(ir_sst, ir_cloud) + masked_mean(mw_sst, mw_cloud))
 
-        if method == 'tile_mean':
-            fill = mean_sst
-        elif method == 'microwave':
-            fill = mean_sst
-            fill = torch.where(mw_cloud, fill, mw_sst)
-            fill = torch.stack([fill, fill])
+        if method == 'smooth':
+            fill = smooth_fill(torch.where(cloud, np.nan, sst))
+        elif method == 'tile_mean':
+            fill = masked_mean(sst, cloud)
         elif method == 'constant':
             fill = self.fill['value']
         sst = torch.where(cloud, fill, sst)
         return sst
+
+    def _random_flip(self, ir, mw):
+        if self.split == 'train':
+            if torch.rand(1).item() > 0.5:
+                # Random vertical flip
+                ir = ir[::-1]
+                mw = mw[::-1]
+            if torch.rand(1).item() > 0.5:
+                # Random horizontal flip
+                ir = ir[:, ::-1]
+                mw = mw[:, ::-1]
+        return ir, mw
+
+    def _transform_data(self, ir_sst, mw_sst, ir_cloud, mw_cloud):
+        if self.transform is not None:
+            if 'sst' in self.transform:
+                ir_sst = self.transform['sst'](ir_sst)
+                mw_sst = self.transform['sst'](mw_sst)
+            if 'cloud' in self.transform:
+                ir_cloud = self.transform['cloud'](ir_cloud)
+                mw_cloud = self.transform['cloud'](mw_cloud)
+        return ir_sst, mw_sst, ir_cloud, mw_cloud
 
     def __getitem__(self, i):
         row = self.df.iloc[i]
@@ -112,29 +153,49 @@ class SSTDataset(Dataset):
         ir_cloud = ir_cloud > 0
         mw_cloud = mw_cloud > 0
 
-        mw_sst = debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud)
-        sst = torch.stack([ir_sst, mw_sst])
-        mask = torch.stack([ir_cloud, mw_cloud])
-        if self.transform is not None:
-            sst = self.transform['sst'](sst)
-            mask = self.transform['cloud'](mask)
+        # Custom random flip, so that the flip is applied to both IR and MW
+        ir_sst, mw_sst = self._random_flip(ir_sst, mw_sst)
+        ir_cloud, mw_cloud = self._random_flip(ir_cloud, mw_cloud)
 
-        # Since data is randomly flipped, check for nans AFTER applying tform
-        mask = mask | torch.isnan(sst)
+        # Add nan regions to cloud mask after flipping SST
+        ir_cloud = ir_cloud | torch.isnan(ir_sst)
+        mw_cloud = mw_cloud | torch.isnan(mw_sst)
 
-        sst_gt = resolution_components(sst)
-        sst_input = self.init_gaps(sst, mask)
-        return sst_input, sst_gt
+        ##### After this point, all tensors have shape (C, H, W) ######
+        ir_sst, mw_sst, ir_cloud, mw_cloud = [
+            add_channel_dim(x) for x in (ir_sst, mw_sst, ir_cloud, mw_cloud)
+        ]
+
+        # mw_sst = debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud)
+        ir_sst, mw_sst, ir_cloud, mw_cloud = self._transform_data(ir_sst, mw_sst, ir_cloud, mw_cloud)
+
+        # Target low-res is NOT MW, it is the low-res IR
+        gt_base = downsample(ir_sst)
+        gt_anomaly = ir_sst - upsample(gt_base)
+
+        # MW: smooth fill (use a smaller kernel because it is coarser!)
+        input_ir_base = downsample(ir_sst, ir_cloud)
+        # return ir_cloud, mw_cloud, gt_base, gt_anomaly, input_ir_base, mw_sst
+        input_ir_base = self.init_gaps(input_ir_base, torch.isnan(input_ir_base))
+        input_mw_base = self.init_gaps(mw_sst, mw_cloud)
+
+        input_base = torch.cat([input_ir_base, input_mw_base], dim=0)
+        input_ir = torch.where(ir_cloud, np.nan, ir_sst)
+
+        return {
+            'input_base': input_base, 'input_ir': input_ir,
+            'gt_base': gt_base, 'gt_anomaly': gt_anomaly,
+        }
 
     def get_ir_mw_pair(self, data_dir, ir_fname, mw_fname):
         _get_da = lambda fname: self.get_tile(data_dir, fname).sst.astype('float32')
         mw_da = _get_da(mw_fname)
         ir_da = _get_da(ir_fname)
-        mw_da = mw_da.interp_like(ir_da)
+        # mw_da = mw_da.interp_like(ir_da)
         ir = torch.from_numpy(ir_da.values)
         mw = torch.from_numpy(mw_da.values)
 
         # Some tiles are (112, 113)
         ir = ir[:112, :112]
-        mw = mw[:112, :112]
+        # mw = mw[:112, :112]
         return ir, mw
