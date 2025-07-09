@@ -7,6 +7,7 @@ from .sst_dataset import upsample
 class UNetSeries(nn.Module):
 
     def __init__(self):
+        super().__init__()
         self.unet_base = UNetBase(in_ch=2, n_class=1, chs=[8, 12, 16, 24])
         self.unet_anomaly = UNetAnomaly(in_ch=1, n_class=1, chs=[32, 48, 64, 84])
 
