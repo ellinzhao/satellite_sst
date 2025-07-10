@@ -78,16 +78,24 @@ class SSTDataset(Dataset):
         cloud_indices = np.hstack([rng.integers(0, len(self.cloud_df), size=K) for _ in range(N)])
         random_cloud_df = self.cloud_df.iloc[cloud_indices].set_index(idx)
 
-        # random_cloud_df.set_index(idx, inplace=True)
-
         self.df['cloud_ir'] = random_cloud_df['ir']
         self.df['cloud_mw'] = random_cloud_df['mw']
+        self._generate_lat_lon_pairs()
+
+        self.hflip = RandomHorizontalFlip(1)
+        self.vflip = RandomVerticalFlip(1)
 
     def _load_csv(self, data_dir):
         df = pd.read_csv(os.path.join(data_dir, 'split.csv'))
         df = df[df['split'] == self.split]
         df = df[['mw', 'ir']]
         return df
+
+    def _generate_lat_lon_pairs(self):
+        pat = '([a-z0-9]+)_([a-z0-9]+)_([a-z0-9-.]+)_([a-z0-9-.]+).nc'
+        coord_df = self.df['mw'].str.split(pat, regex=True, expand=True)
+        coord_df = coord_df.iloc[:, 3:5].astype(float)
+        self.df['mw_point'] = list(zip(coord_df.iloc[:, 0], coord_df.iloc[:, 1]))
 
     def __len__(self):
         return len(self.df)
@@ -127,15 +135,13 @@ class SSTDataset(Dataset):
     def _random_flip(self, ir, mw):
         if self.split == 'train':
             if torch.rand(1).item() > 0.5:
-                vflip = RandomVerticalFlip(1)
                 # Random vertical flip
-                ir = vflip(ir)
-                mw = vflip(mw)
+                ir = self.vflip(ir)
+                mw = self.vflip(mw)
             if torch.rand(1).item() > 0.5:
-                hflip = RandomHorizontalFlip(1)
                 # Random horizontal flip
-                ir = hflip(ir)
-                mw = hflip(mw)
+                ir = self.hflip(ir)
+                mw = self.hflip(mw)
         return ir, mw
 
     def _transform_data(self, ir_sst, mw_sst, ir_cloud, mw_cloud):
@@ -163,13 +169,15 @@ class SSTDataset(Dataset):
         ir_cloud = ir_cloud | torch.isnan(ir_sst)
         mw_cloud = mw_cloud | torch.isnan(mw_sst)
 
-        ##### After this point, all tensors have shape (C, H, W) ######
+        # After this point, all tensors have shape (C, H, W) #
         ir_sst, mw_sst, ir_cloud, mw_cloud = [
             add_channel_dim(x) for x in (ir_sst, mw_sst, ir_cloud, mw_cloud)
         ]
 
         # mw_sst = debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud)
-        ir_sst, mw_sst, ir_cloud, mw_cloud = self._transform_data(ir_sst, mw_sst, ir_cloud, mw_cloud)
+        ir_sst, mw_sst, ir_cloud, mw_cloud = self._transform_data(
+            ir_sst, mw_sst, ir_cloud, mw_cloud,
+        )
 
         # Target low-res is NOT MW, it is the low-res IR
         gt_base = downsample(ir_sst)
@@ -186,7 +194,7 @@ class SSTDataset(Dataset):
 
         return {
             'input_base': input_base, 'input_ir': input_ir,
-            'gt_base': gt_base, 'gt_anomaly': gt_anomaly,
+            'gt_base': gt_base, 'gt_anomaly': gt_anomaly, 'mw_coord': torch.tensor(row['mw_point'])
         }
 
     def get_ir_mw_pair(self, data_dir, ir_fname, mw_fname):
