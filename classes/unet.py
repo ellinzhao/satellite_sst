@@ -48,34 +48,37 @@ class UNet(nn.Module):
     ):
         super().__init__()
         n_layers = len(chs)
-        self.encoder_layers = []
-        self.decoder_layers = []
+        self.encoder_convs = nn.ModuleList()
+        self.encoder_downs = nn.ModuleList()
+
+        self.decoder_convs = nn.ModuleList()
+        self.decoder_ups = nn.ModuleList()
+
         self.in_proj = nn.Conv2d(in_ch, in_ch, 1, **in_proj_kwargs)
         self.bottleneck_conv = ConvBlock(chs[-2], chs[-1], **out_proj_kwargs)
         self.out_proj = nn.Conv2d(chs[0], out_ch, 1)
 
         enc_chs = [in_ch] + chs[:-1]
         for i in range(len(enc_chs) - 1):
-            self.encoder_layers.append(
-                (ConvBlock(enc_chs[i], enc_chs[i + 1]), Downsample())
-            )
+            self.encoder_convs.append(ConvBlock(enc_chs[i], enc_chs[i + 1]))
+            self.encoder_downs.append(Downsample())
         for i in range(n_layers - 1):
-            self.decoder_layers.append(
-                (Upsample(chs[i + 1]), ConvBlock(chs[i] + chs[i + 1], chs[i]))
-            )
-        self.decoder_layers = self.decoder_layers[::-1]
+            self.decoder_convs.append(ConvBlock(chs[i] + chs[i + 1], chs[i]))
+            self.decoder_ups.append(Upsample(chs[i + 1]))
+        self.decoder_convs = self.decoder_convs[::-1]
+        self.decoder_ups = self.decoder_ups[::-1]
 
     def forward(self, x, return_z=False):
         x = self.in_proj(x)
 
         enc_feats = []
-        for (conv, down) in self.encoder_layers:
+        for (conv, down) in zip(self.encoder_convs, self.encoder_downs):
             x = conv(x)
             enc_feats.append(x)
             x = down(x)
         x = z = self.bottleneck_conv(x)
 
-        for (up, conv), enc_feat in zip(self.decoder_layers, enc_feats[::-1]):
+        for up, conv, enc_feat in zip(self.decoder_ups, self.decoder_convs, enc_feats[::-1]):
             x = up(x)
             x = torch.cat([x, enc_feat], dim=1)
             x = conv(x)
