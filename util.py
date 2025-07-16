@@ -1,6 +1,14 @@
 import torch
 
 
+def add_channel_dim(x):
+    if x.ndim < 2 or x.ndim > 3:
+        raise IndexError(f'Input has {x.ndim} dims, expected 2 or 3')
+    elif x.ndim == 2:
+        x = x.unsqueeze(0)
+    return x
+
+
 def gradient(x, axis=(-2, -1)):
     derivatives = torch.gradient(x, dim=axis)
     sum_squared = sum([deriv**2 for deriv in derivatives])

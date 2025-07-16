@@ -23,10 +23,18 @@ def add_channel_dim(x):
 
 def downsample(ir, cloud_mask=None):
     if cloud_mask is None:
-        pool = torch.nn.AvgPool2d(11, count_include_pad=False, padding=4)
+        pool = torch.nn.AvgPool2d(12, count_include_pad=False, padding=4)
         return pool(ir)
-    pool = torch.nn.AvgPool2d(11, divisor_override=1, padding=4)
-    return pool(torch.where(cloud_mask, 0, ir)) / pool((~cloud_mask).float())
+    pool = torch.nn.AvgPool2d(12, divisor_override=1, padding=4)
+    data_pool = pool(torch.where(cloud_mask, 0, ir))
+    mask_pool = pool((~cloud_mask).float())
+    nonpad = pool(torch.ones_like(ir))
+    frac_valid_px = mask_pool / nonpad
+    return torch.where(
+        frac_valid_px > 0.5,
+        data_pool / mask_pool,
+        np.nan
+    )
 
 
 def upsample(mw):
@@ -120,15 +128,18 @@ class SSTDataset(Dataset):
                 DS_CACHE[path] = ds.load()
         return ds
 
-    def init_gaps(self, sst, cloud):
-        method = self.fill['method']
+    def init_gaps(self, sst, cloud, method=None, **kwargs):
+        if method is None:
+            method = self.fill['method']
 
         if method == 'smooth':
-            fill = smooth_fill(torch.where(cloud, np.nan, sst))
+            fill = smooth_fill(torch.where(cloud, np.nan, sst), **kwargs)
         elif method == 'tile_mean':
             fill = masked_mean(sst, cloud)
         elif method == 'constant':
             fill = self.fill['value']
+        elif method == 'microwave':
+            fill = kwargs['microwave']
         sst = torch.where(cloud, fill, sst)
         return sst
 
@@ -169,7 +180,7 @@ class SSTDataset(Dataset):
         ir_cloud = ir_cloud | torch.isnan(ir_sst)
         mw_cloud = mw_cloud | torch.isnan(mw_sst)
 
-        # After this point, all tensors have shape (C, H, W) #
+        # After this point, all tensors have shape (C, H, W)
         ir_sst, mw_sst, ir_cloud, mw_cloud = [
             add_channel_dim(x) for x in (ir_sst, mw_sst, ir_cloud, mw_cloud)
         ]
@@ -178,24 +189,37 @@ class SSTDataset(Dataset):
         ir_sst, mw_sst, ir_cloud, mw_cloud = self._transform_data(
             ir_sst, mw_sst, ir_cloud, mw_cloud,
         )
-
-        # Target low-res is NOT MW, it is the low-res IR
-        gt_base = downsample(ir_sst)
-        gt_anomaly = ir_sst - upsample(gt_base)
-
-        # MW: smooth fill (use a smaller kernel because it is coarser!)
         input_ir_base = downsample(ir_sst, ir_cloud)
-        # return ir_cloud, mw_cloud, gt_base, gt_anomaly, input_ir_base, mw_sst
-        input_ir_base = self.init_gaps(input_ir_base, torch.isnan(input_ir_base))
+        ir_base_cloud = torch.isnan(input_ir_base)
+        input_ir_base = self.init_gaps(input_ir_base, ir_base_cloud)
         input_mw_base = self.init_gaps(mw_sst, mw_cloud)
+        input_base = (input_ir_base + input_mw_base) * 0.5
+        input_base = upsample(input_base)
 
-        input_base = torch.cat([input_ir_base, input_mw_base], dim=0)
-        input_ir = torch.where(ir_cloud, np.nan, ir_sst)
-
+        input_ir = self.init_gaps(ir_sst, ir_cloud, method='microwave', microwave=input_base)
         return {
-            'input_base': input_base, 'input_ir': input_ir,
-            'gt_base': gt_base, 'gt_anomaly': gt_anomaly, 'mw_coord': torch.tensor(row['mw_point'])
+            'input_ir': input_ir, 'input_base': input_base,
+            'gt_ir': ir_sst, 'cloud_ir': ir_cloud,
         }
+
+        # # Target low-res is NOT MW, it is the low-res IR
+        # gt_base = downsample(ir_sst)
+        # gt_anomaly = ir_sst - upsample(gt_base)
+
+        # # MW: smooth fill (use a smaller kernel because it is coarser!)
+        # input_ir_base = downsample(ir_sst, ir_cloud)
+        # ir_base_cloud = torch.isnan(input_ir_base)
+        # input_ir_base = self.init_gaps(input_ir_base, ir_base_cloud)
+        # input_mw_base = self.init_gaps(mw_sst, mw_cloud)
+
+        # input_base = torch.cat([input_ir_base, input_mw_base], dim=0)
+        # input_ir = torch.where(ir_cloud, np.nan, ir_sst)
+
+        # return {
+        #     'input_base': input_base, 'input_ir': input_ir,
+        #     'gt_base': gt_base, 'gt_anomaly': gt_anomaly,
+        #     # 'ir_base_cloud': ir_base_cloud, 'mw_coord': torch.tensor(row['mw_point']),
+        # }
 
     def get_ir_mw_pair(self, data_dir, ir_fname, mw_fname):
         _get_da = lambda fname: self.get_tile(data_dir, fname).sst.astype('float32')
@@ -209,3 +233,8 @@ class SSTDataset(Dataset):
         ir = ir[:112, :112]
         # mw = mw[:112, :112]
         return ir, mw
+
+
+def get_input_target(data):
+    input_base = data['input_base']
+    return data['input_ir'] - input_base, data['gt_ir'] - input_base
