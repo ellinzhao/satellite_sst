@@ -1,10 +1,10 @@
 import torch.nn as nn
 
 
-SST_MIN = 0.5897
-SST_MAX = 30.396
-SST_MEAN = 21.59
-SST_STD = 2.94
+SST_MIN = -4.2256  # 0.5897
+SST_MAX = 3.6316  # 30.396
+SST_MEAN = 0.0056  # 21.59
+SST_STD = 0.2001  # 2.94
 
 
 class ScaleSST(nn.Module):
