@@ -1,13 +1,12 @@
 from .sst_dataset import SSTDataset
-from geopy import distance
-import pandas as pd
+import numpy as np
 
 
 def index_to_col(df):
     return df.index.to_series().reset_index(drop=True)
 
 
-class TripletSSTDatset(SSTDataset):
+class TripletSSTDataset(SSTDataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
@@ -15,58 +14,59 @@ class TripletSSTDatset(SSTDataset):
     ):
         super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill)
 
-        # circumference of Earth ~40,000 km
-        self.triplet_ranges = {
-            'positive': (10, 800),
-            'negative': (2000, 50000),
-        }
-        self.triplet_df = self._match_triplets()
+    def _generate_random_samples(self, K):
+        N = len(self.sst_df)
 
-    def _match_triplets(self):
-        mw_locations = self.df['mw'].unique()
-        dataset_triplets = []
+        # Repeat each location K times
+        self.df = self.sst_df.loc[self.sst_df.index.repeat(K)]
+        idx = np.arange(len(self.df))
+        self.df.set_index(idx, inplace=True)
 
-        # Uses `great circle` distance calculation, which assumes the earth is a perfect sphere
-        # This distance calculation is not as accurate at geodesic distance, but it ~8x faster
+        rng = np.random.default_rng()
 
-        for loc in mw_locations:
-            skip = False
-            loc_df = self.df[self.df['mw'] == loc]
-            other_df = self.df[self.df['mw'] != loc]
-            n_loc = len(loc_df)
+        cloud_indices = np.hstack([
+            rng.choice(len(self.cloud_df), replace=False, size=(2, K))  # shuffle=False should provide slight speedup?
+            for _ in range(N)
+        ])
+        idx_repeat = np.vstack([np.arange(N) for _ in range(K)]).ravel(order='F')
 
-            loc_point = loc_df.iloc[0]['mw_point']
-            dist = other_df.apply(
-                lambda row: distance.great_circle(row['mw_point'], loc_point).km,
-                axis=1
-            )
+        neg_sst_idx = (rng.integers(2, N - 2, size=K * N) + idx_repeat) % N
+        # random idx that is +/- 2 away from each row
 
-            idx_data = {'anchor': index_to_col(loc_df)}
-            for k, dist_range in self.triplet_ranges.items():
-                _df = other_df[(dist >= dist_range[0]) & (dist < dist_range[1])]
+        # TODO: use a pandas multi-index here
+        # Cloud idx 1
+        random_cloud_df = self.cloud_df.iloc[cloud_indices[0]].set_index(idx)
+        self.df['pos_cloud_ir'] = random_cloud_df['ir']
+        self.df['pos_cloud_mw'] = random_cloud_df['mw']
 
-                if len(_df) == 0:
-                    skip = True
-                    break
+        # Cloud idx 2
+        random_cloud_df = self.cloud_df.iloc[cloud_indices[1]].set_index(idx)
+        self.df['neg_cloud_ir'] = random_cloud_df['ir']
+        self.df['neg_cloud_mw'] = random_cloud_df['mw']
 
-                _df = _df.sample(n=n_loc, replace=n_loc > len(_df))
-                idx_data[k] = index_to_col(_df)
-
-            if skip:
-                continue
-            dataset_triplets.append(pd.DataFrame(idx_data))
-
-        dataset_df = pd.concat(dataset_triplets, axis='index')
-        return dataset_df.reset_index(drop=True)
-
-    def __len__(self):
-        return len(self.triplet_df)
+        # SST
+        random_sst_df = self.sst_df.iloc[neg_sst_idx].set_index(idx)
+        self.df['neg_sst_ir'] = random_sst_df['ir']
+        self.df['neg_sst_mw'] = random_sst_df['mw']
 
     def __getitem__(self, i):
-        row = self.triplet_df.iloc[i]
+        row = self.df.iloc[i]
+
+        # can add more flips for sst1 and sst2, rather than applying the same flip for sst1 and sst2
+        flip_sst = self._get_random_flip()
+        flip_cloud = self._get_random_flip()
+
+        x1_m1_row = row[['ir', 'mw', 'pos_cloud_ir', 'pos_cloud_mw']]
+        x1_m1_row = x1_m1_row.rename({'pos_cloud_ir': 'cloud_ir', 'pos_cloud_mw': 'cloud_mw'})
+
+        x1_m2_row = row[['ir', 'mw', 'neg_cloud_ir', 'neg_cloud_mw']]
+        x1_m2_row = x1_m2_row.rename({'neg_cloud_ir': 'cloud_ir', 'neg_cloud_mw': 'cloud_mw'})
+
+        x2_m1_row = row[['neg_sst_ir', 'neg_sst_mw', 'pos_cloud_ir', 'pos_cloud_mw']]
+        x2_m1_row = x2_m1_row.rename({'neg_sst_ir': 'ir', 'neg_sst_mw': 'mw', 'pos_cloud_ir': 'cloud_ir', 'pos_cloud_mw': 'cloud_mw'})
         return {
             # Despite init calls working with only `super()...`, this call
             # requires the Python 2 syntax for calling parent methods
-            k: super(TripletSSTDatset, self).__getitem__(row[k])
-            for k in ('anchor', 'positive', 'negative')
+            k: self._get_data_by_row(row, flip_sst, flip_cloud)
+            for k, row in zip(('x1_m1', 'x1_m2', 'x2_m1'), (x1_m1_row, x1_m2_row, x2_m1_row))
         }
