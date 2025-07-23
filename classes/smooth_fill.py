@@ -16,7 +16,7 @@ def gaussian_kernel(width=11, sigma=1):
     return kernel / np.sum(kernel)
 
 
-def _fill_step(input, width, sigma=1, valid_count_override=False):
+def _fill_step(input, width, sigma=1):
     pad = int(width // 2)
     kernel = gaussian_kernel(width, sigma=sigma)
     kernel = torch.from_numpy(kernel).float()[None, None]
@@ -28,28 +28,29 @@ def _fill_step(input, width, sigma=1, valid_count_override=False):
     valid_count = convolve((~nan_mask).float())
 
     filtered = data_sum / valid_count
+    filtered = torch.where(valid_count < 0.01, np.nan, filtered)
     filtered = torch.where(nan_mask, filtered, input)
-    if valid_count_override:
-        return filtered.squeeze(0)
-    filtered = torch.where(valid_count < 0.25, np.nan, filtered)
     return filtered.squeeze(0)
 
 
-def smooth_fill(input, width_base=7, increment_every_k=3):
+def smooth_fill(input, width_base=7, increment_every_k=2):
     i = 0
     sigma = 1
+    if torch.isnan(input).float().mean() == 1:
+        # No information to work with!
+        return None
+
     while torch.isnan(input).sum() > 0:
-        override = False
-        if i < 60:
+        if i < 200:
+            # Kernel width increases every `increment_every_k` steps
+            # Sigma is set so that the FWHM (approximately) fills the kernel
             k = int(np.floor(i // increment_every_k) * 2) + width_base
-        elif i < 100:
-            override = True
-            k = input.shape[1] // 2
-            sigma = k // 5
+            sigma = k
         else:
             warnings.warn('Smooth fill has not converged')
+            print(input.shape, torch.isnan(input).float().mean())
             tile_mean = input[~torch.isnan(input)].mean()
             return torch.where(torch.isnan(input), tile_mean, input)
-        input = _fill_step(input, k, sigma=sigma, valid_count_override=override)
+        input = _fill_step(input, k, sigma=sigma)
         i += 1
     return input
