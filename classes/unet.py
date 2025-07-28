@@ -48,11 +48,8 @@ class UNet(nn.Module):
     ):
         super().__init__()
         n_layers = len(chs)
-        self.encoder_convs = nn.ModuleList()
-        self.encoder_downs = nn.ModuleList()
-
-        self.decoder_convs = nn.ModuleList()
-        self.decoder_ups = nn.ModuleList()
+        self.encoder_blocks = nn.ModuleList()
+        self.decoder_blocks = nn.ModuleList()
 
         self.in_proj = nn.Conv2d(in_ch, in_ch, 1, **in_proj_kwargs)
         self.bottleneck_conv = ConvBlock(chs[-2], chs[-1], **out_proj_kwargs)
@@ -60,30 +57,39 @@ class UNet(nn.Module):
 
         enc_chs = [in_ch] + chs[:-1]
         for i in range(len(enc_chs) - 1):
-            self.encoder_convs.append(ConvBlock(enc_chs[i], enc_chs[i + 1]))
-            self.encoder_downs.append(Downsample())
+            conv_i = ConvBlock(enc_chs[i], enc_chs[i + 1])
+            down_i = Downsample()
+            self.encoder_blocks.extend([conv_i, down_i])
+
         for i in range(n_layers - 1):
-            self.decoder_convs.append(ConvBlock(chs[i] + chs[i + 1], chs[i]))
-            self.decoder_ups.append(Upsample(chs[i + 1]))
-        self.decoder_convs = self.decoder_convs[::-1]
-        self.decoder_ups = self.decoder_ups[::-1]
+            conv_i = ConvBlock(chs[i] + chs[i + 1], chs[i])
+            up_i = Upsample(chs[i + 1])
+            self.decoder_blocks.extend([conv_i, up_i])
 
     def forward(self, x, return_z=False):
         x = self.in_proj(x)
 
         enc_feats = []
-        for (conv, down) in zip(self.encoder_convs, self.encoder_downs):
-            x = conv(x)
+
+        for i in range(0, len(self.encoder_blocks), 2):
+            conv_i = self.encoder_blocks[i]
+            down_i = self.encoder_blocks[i + 1]
+            x = conv_i(x)
             enc_feats.append(x)
-            x = down(x)
+            x = down_i(x)
+
         x = z = self.bottleneck_conv(x)
 
-        for up, conv, enc_feat in zip(self.decoder_ups, self.decoder_convs, enc_feats[::-1]):
-            x = up(x)
-            x = torch.cat([x, enc_feat], dim=1)
-            x = conv(x)
+        for i in range(len(self.decoder_blocks), 0, -2):
+            conv_i = self.decoder_blocks[i]
+            up_i = self.decoder_blocks[i + 1]
+            enc_feat_i = enc_feats[i // 2]
+            x = up_i(x)
+            x = torch.cat([x, enc_feat_i], dim=1)
+            x = conv_i(x)
 
         x = self.out_proj(x)
         if return_z:
             return x, z
+
         return x
