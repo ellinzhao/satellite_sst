@@ -48,7 +48,7 @@ class MaskedLoss(nn.Module):
 
 class FullLoss(nn.Module):
 
-    def __init__(self, sst_weight=1, grad_weight=None):
+    def __init__(self, sst_weight=1, grad_weight=1):
         super().__init__()
         self.masked_l1 = MaskedLoss(nn.L1Loss)
         self.inverse_tform = UnscaleSST()
@@ -62,7 +62,7 @@ class FullLoss(nn.Module):
         sst_loss = self.masked_l1(pred, target)
 
         # Hacky way of toggling the gradient loss
-        if (self.grad_weight is None) or (self.grad_weight == 0):
+        if self.grad_weight == 0:
             grad_loss = 0
         else:
             pred_grad = gradient(pred, axis=(-2, -1))  # B, C, H, W
@@ -84,6 +84,7 @@ class GradWeightedLoss(nn.Module):
         target = self.inverse_tform(target)
 
         spatial_weights = gradient(target, axis=(-2, -1))
+        spatial_weights = torch.nan_to_num(spatial_weights)
         spatial_weights = self.grad_preprocess_fn(spatial_weights)
         sst_loss = self.masked_l1(
             pred * spatial_weights,
