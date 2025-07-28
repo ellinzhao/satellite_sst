@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
-from torchvision.transforms import Resize, RandomHorizontalFlip, RandomVerticalFlip
+from torchvision.transforms import InterpolationMode, Resize, RandomHorizontalFlip, RandomVerticalFlip
 
 from .smooth_fill import smooth_fill
 
@@ -38,7 +38,7 @@ def downsample(ir, cloud_mask=None):
 
 
 def upsample(mw):
-    up = Resize(112)
+    up = Resize(112, interpolation=InterpolationMode.BICUBIC)
     return up(mw)
 
 
@@ -96,7 +96,13 @@ class SSTDataset(Dataset):
         self.df.set_index(idx, inplace=True)
 
         rng = np.random.default_rng()
-        cloud_indices = np.hstack([rng.integers(0, len(self.cloud_df), size=K) for _ in range(N)])
+        if self.split == 'train':
+            cloud_indices = np.hstack([rng.integers(0, len(self.cloud_df), size=K) for _ in range(N)])
+        else:
+            # cloud indices should be deterministic for non-train datasets
+            # so use the unshuffled cloud index
+            cloud_indices = np.arange(0, K * N) % len(self.cloud_df)
+
         random_cloud_df = self.cloud_df.iloc[cloud_indices].set_index(idx)
 
         self.df['cloud_ir'] = random_cloud_df['ir']
