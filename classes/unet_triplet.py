@@ -49,7 +49,7 @@ class UNet(nn.Module):
     ):
         super().__init__()
         self.chs = chs
-        self.mask_token = nn.Parameter(torch.zeros((1, in_proj_ch, 1, 1)))
+        self.mask_token = nn.Parameter(torch.randn(1, in_proj_ch, 1, 1))
         self.in_proj = nn.Conv2d(in_ch, in_proj_ch, 1)
         self.bottleneck_conv = ConvBlock(chs[-1], 2 * chs[-1])
 
