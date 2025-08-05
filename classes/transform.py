@@ -5,8 +5,8 @@ from matplotlib.colors import Normalize
 
 SST_MIN = -4.2256  # 0.5897
 SST_MAX = 3.6316  # 30.396
-SST_MEAN = 0.0056  # 21.59
-SST_STD = 0.2001  # 2.94
+SST_MEAN = 18.9057  # 21.59
+SST_STD = 4.2406  # 2.94
 
 
 class ScaleSST(nn.Module):
