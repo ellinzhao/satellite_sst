@@ -18,8 +18,10 @@ class SSIMLoss(nn.Module):
 
     def _unnormalize(self, x):
         # Unstandardize the data and map to range [0, 1]
-        tile_min = torch.min(x, dim=(1, 2, 3), keepdim=True)
-        tile_max = torch.max(x, dim=(1, 2, 3), keepdim=True)
+        b = x.shape[0]
+        flat_x = x.view(b, -1)
+        tile_min = flat_x.min(dim=1).values[:, None, None, None]
+        tile_max = flat_x.max(dim=1).values[:, None, None, None]
         x = (x - tile_min) / (tile_max - tile_min)
 
         # x = self.inverse_tform(x)
