@@ -18,12 +18,18 @@ class SSIMLoss(nn.Module):
 
     def _unnormalize(self, x):
         # Unstandardize the data and map to range [0, 1]
-        x = self.inverse_tform(x)
-        x = (x - SST_MIN) / (SST_MAX - SST_MIN)
-        return torch.nan_to_num(x)
+        tile_min = torch.min(x, dim=(1, 2, 3), keepdim=True)
+        tile_max = torch.max(x, dim=(1, 2, 3), keepdim=True)
+        x = (x - tile_min) / (tile_max - tile_min)
+
+        # x = self.inverse_tform(x)
+        # x = (x - SST_MIN) / (SST_MAX - SST_MIN)
+        return x
 
     def forward(self, pred, target):
-        return self.ssim_module(self._unnormalize(pred), self._unnormalize(target))
+        mask = torch.isnan(pred) | torch.isnan(target)
+        fill_nan = lambda x: torch.where(mask, (SST_MAX - SST_MIN) / 2, x)
+        return self.ssim_module(fill_nan(self._unnormalize(pred)), fill_nan(self._unnormalize(target)))
 
 
 class MaskedLoss(nn.Module):
@@ -85,7 +91,9 @@ class GradWeightedLoss(nn.Module):
 
         spatial_weights = gradient(target, axis=(-2, -1))
         spatial_weights = torch.nan_to_num(spatial_weights)
-        spatial_weights = self.grad_preprocess_fn(spatial_weights)
+        spatial_weights = spatial_weights**0.3
+        spatial_weights += 1e-6
+        spatial_weights /= spatial_weights.max()
         sst_loss = self.masked_l1(
             pred * spatial_weights,
             target * spatial_weights,
