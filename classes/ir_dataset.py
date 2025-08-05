@@ -7,9 +7,10 @@ class IRDataset(SSTDataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0},
+        K=10, fill={'method': 'constant', 'value': 0}, return_coord=False,
     ):
         assert fill['method'] not in ['microwave', 'smooth'], 'Cannot use MW-based fill for the IR only dataset'
+        self.return_coord = return_coord
         super().__init__(
             sst_dir, cloud_dir, split, preload=preload,
             transform=transform, K=K, fill=fill,
@@ -71,9 +72,13 @@ class IRDataset(SSTDataset):
 
         ir_sst, ir_cloud = self._transform_data(ir_sst, ir_cloud)
         input_ir = self.init_gaps(ir_sst, ir_cloud)
-        return {
+        out = {
             'input_ir': input_ir, 'gt_ir': ir_sst, 'cloud_ir': ir_cloud,
         }
+        if self.return_coord:
+            coord = row['mw_point']
+            out['coord'] = torch.tensor(coord)
+        return out
 
 
 def get_input_target(data):
