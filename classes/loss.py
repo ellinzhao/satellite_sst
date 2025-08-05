@@ -30,8 +30,17 @@ class SSIMLoss(nn.Module):
 
     def forward(self, pred, target):
         mask = torch.isnan(pred) | torch.isnan(target)
-        fill_nan = lambda x: torch.where(mask, (SST_MAX - SST_MIN) / 2, x)
-        return self.ssim_module(fill_nan(self._unnormalize(pred)), fill_nan(self._unnormalize(target)))
+        mask = mask.float()
+        target = torch.nan_to_num(target)
+        pred = torch.nan_to_num(pred)
+
+        target_mean = torch.sum(target * mask, dim=(1, 2, 3), keepdim=True) / torch.sum(mask, dim=(1, 2, 3), keepdim=True)
+        target_mean = torch.ones_like(pred) * target_mean
+        mask = mask.bool()
+
+        target = torch.where(mask, target_mean, target)
+        pred = torch.where(mask, target_mean, pred)
+        return 1 - self.ssim_module(self._unnormalize(pred), self._unnormalize(target))
 
 
 class MaskedLoss(nn.Module):
