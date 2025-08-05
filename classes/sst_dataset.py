@@ -140,13 +140,15 @@ class SSTDataset(Dataset):
     def init_gaps(self, sst, cloud, method=None, **kwargs):
         if method is None:
             method = self.fill['method']
+            kwargs = self.fill.copy()
+            kwargs.pop('method')
 
         if method == 'smooth':
             fill = smooth_fill(torch.where(cloud, np.nan, sst), **kwargs)
         elif method == 'tile_mean':
             fill = masked_mean(sst, cloud)
         elif method == 'constant':
-            fill = self.fill['value']
+            fill = kwargs['value']
         elif method == 'microwave':
             fill = kwargs['microwave']
         sst = torch.where(cloud, fill, sst)
