@@ -1,3 +1,4 @@
+import warnings
 from collections import OrderedDict
 
 import torch
@@ -45,13 +46,15 @@ class Downsample(nn.Module):
 class UNet(nn.Module):
 
     def __init__(
-        self, in_ch, in_proj_ch, out_ch, chs=[8, 16, 32, 64],
+        self, in_ch, in_proj_ch, out_ch, chs=[8, 16, 32, 64], use_loc=False,
     ):
         super().__init__()
         self.chs = chs
+        self.use_loc = use_loc
         self.mask_token = nn.Parameter(torch.randn(1, in_proj_ch, 1, 1))
         self.in_proj = nn.Conv2d(in_ch, in_proj_ch, 1)
         self.bottleneck_conv = ConvBlock(chs[-1], 2 * chs[-1])
+        self.upsample = nn.Upsample(scale_factor=7, mode='nearest')
 
         enc_dict = OrderedDict()
         enc_chs = [in_proj_ch] + chs
@@ -70,7 +73,7 @@ class UNet(nn.Module):
         self.data_decoder = nn.Sequential(data_dec_dict)
         self.mask_decoder = nn.Sequential(mask_dec_dict)
 
-    def forward(self, x, mask=None, return_z=False):
+    def forward(self, x, mask=None, return_z=False, loc_emb=None):
         x = self.in_proj(x)
         if mask is not None:
             x = torch.where(mask, self.mask_token, x)
@@ -82,6 +85,13 @@ class UNet(nn.Module):
         feat_ch = self.chs[-1]
         x_data = z_data = x[:, :feat_ch]
         x_mask = z_mask = x[:, feat_ch:]
+
+        if self.use_loc:
+            assert loc_emb is not None
+            x_data = x_data + self.upsample(loc_emb[..., None, None])
+        else:
+            if loc_emb is not None:
+                warnings.warn('`loc_emb` is supplied, but the model is not setup to use the variable. Initialize the model with `use_loc=True`.')
 
         x_data = self.data_decoder(x_data)
         x_mask = self.data_decoder(x_mask)
