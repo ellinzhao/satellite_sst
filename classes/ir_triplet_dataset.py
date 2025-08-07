@@ -10,9 +10,9 @@ class IRTripletSSTDataset(IRDataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0},
+        K=10, fill={'method': 'constant', 'value': 0}, return_coord=False,
     ):
-        super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill)
+        super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill, return_coord)
 
     def _generate_random_samples(self, K):
         N = len(self.sst_df)
