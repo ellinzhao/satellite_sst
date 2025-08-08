@@ -47,11 +47,13 @@ class UNet(nn.Module):
 
     def __init__(
         self, in_ch, in_proj_ch, out_ch, chs=[8, 16, 32, 64], use_loc=False,
+        mask_token_init_fn=lambda dim: torch.randn(dim),
     ):
         super().__init__()
         self.chs = chs
         self.use_loc = use_loc
-        self.mask_token = nn.Parameter(torch.randn(1, in_proj_ch, 1, 1))
+        self.mask_token = nn.Parameter(mask_token_init_fn(in_proj_ch)[None, :, None, None])
+        # nn.Parameter(torch.randn(1, in_proj_ch, 1, 1))
         self.in_proj = nn.Conv2d(in_ch, in_proj_ch, 1)
         self.bottleneck_conv = ConvBlock(chs[-1], 2 * chs[-1])
         self.upsample = nn.Upsample(scale_factor=7, mode='nearest')
