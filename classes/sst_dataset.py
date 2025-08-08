@@ -76,8 +76,8 @@ class SSTDataset(Dataset):
             self.preload_tiles(self.sst_dir, self.sst_df)
             self.preload_tiles(self.cloud_dir, self.cloud_df)
 
-        self._generate_random_samples(K)
         self._generate_lat_lon_pairs()
+        self._generate_random_samples(K)
 
         self.hflip = RandomHorizontalFlip(1)
         self.vflip = RandomVerticalFlip(1)
@@ -110,9 +110,9 @@ class SSTDataset(Dataset):
 
     def _generate_lat_lon_pairs(self):
         pat = '([a-z0-9]+)_([a-z0-9]+)_([a-z0-9-.]+)_([a-z0-9-.]+).nc'
-        coord_df = self.df['mw'].str.split(pat, regex=True, expand=True)
+        coord_df = self.sst_df['mw'].str.split(pat, regex=True, expand=True)
         coord_df = coord_df.iloc[:, 3:5].astype(float)
-        self.df['mw_point'] = list(zip(coord_df.iloc[:, 0], coord_df.iloc[:, 1]))
+        self.sst_df['mw_point'] = list(zip(coord_df.iloc[:, 0], coord_df.iloc[:, 1]))
 
     def __len__(self):
         return len(self.df)

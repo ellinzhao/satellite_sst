@@ -1,12 +1,14 @@
-from .ir_dataset import IRDataset
 import numpy as np
+import pandas as pd
+
+from .ir_dataset import IRDataset
 
 
 def index_to_col(df):
     return df.index.to_series().reset_index(drop=True)
 
 
-class IRTripletSSTDataset(IRDataset):
+class IRTripletDataset(IRDataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
@@ -31,23 +33,32 @@ class IRTripletSSTDataset(IRDataset):
         idx_repeat = np.vstack([np.arange(N) for _ in range(K)]).ravel(order='F')
 
         neg_sst_idx = (rng.integers(50, N - 50, size=K * N) + idx_repeat) % N
-        # random idx that is +/- 2 away from each row
+        # random idx that is +/- 50 away from each row
 
-        # TODO: use a pandas multi-index here
-        # Cloud idx 1
-        random_cloud_df = self.cloud_df.iloc[cloud_indices[0]].set_index(idx)
-        self.df['pos_cloud_ir'] = random_cloud_df['ir']
-        self.df['pos_cloud_mw'] = random_cloud_df['mw']
+        cols = ['ir', 'mw', 'mw_point']
+        multiindex = pd.MultiIndex.from_product([['sst1', 'sst2', 'cloud1', 'cloud2'], cols])
+        sst1 = self.df
+        sst2 = self.sst_df.iloc[neg_sst_idx].set_index(idx)
+        cloud1 = self.cloud_df.iloc[cloud_indices[0]].set_index(idx)
+        cloud2 = self.cloud_df.iloc[cloud_indices[1]].set_index(idx)
+        # The cloud location doesn't matter, but we add it so the multi-index is valid
+        cloud1['mw_point'] = [(np.nan, np.nan), ] * len(cloud1)
+        cloud2['mw_point'] = [(np.nan, np.nan), ] * len(cloud1)
+        triplet_df = pd.concat(
+            [df_[cols] for df_ in (sst1, sst2, cloud1, cloud2)], axis=1
+        )
+        triplet_df.columns = multiindex
+        self.df = triplet_df
 
-        # Cloud idx 2
-        random_cloud_df = self.cloud_df.iloc[cloud_indices[1]].set_index(idx)
-        self.df['neg_cloud_ir'] = random_cloud_df['ir']
-        self.df['neg_cloud_mw'] = random_cloud_df['mw']
-
-        # SST
-        random_sst_df = self.sst_df.iloc[neg_sst_idx].set_index(idx)
-        self.df['neg_sst_ir'] = random_sst_df['ir']
-        self.df['neg_sst_mw'] = random_sst_df['mw']
+    def _get_triplet_row(self, sst, cloud, row):
+        ks = [
+            (sst, 'ir'), (sst, 'mw'), (sst, 'mw_point'), (cloud, 'ir'), (cloud, 'mw')
+        ]
+        # These are the columns that the parent class expects to receive
+        new_cols = ['ir', 'mw', 'mw_point', 'cloud_ir', 'cloud_mw']
+        row = row.loc[ks]
+        row.index = new_cols
+        return row
 
     def __getitem__(self, i):
         row = self.df.iloc[i]
@@ -55,18 +66,12 @@ class IRTripletSSTDataset(IRDataset):
         # can add more flips for sst1 and sst2, rather than applying the same flip for sst1 and sst2
         flip_sst = self._get_random_flip()
         flip_cloud = self._get_random_flip()
-
-        x1_m1_row = row[['ir', 'mw', 'pos_cloud_ir', 'pos_cloud_mw']]
-        x1_m1_row = x1_m1_row.rename({'pos_cloud_ir': 'cloud_ir', 'pos_cloud_mw': 'cloud_mw'})
-
-        x1_m2_row = row[['ir', 'mw', 'neg_cloud_ir', 'neg_cloud_mw']]
-        x1_m2_row = x1_m2_row.rename({'neg_cloud_ir': 'cloud_ir', 'neg_cloud_mw': 'cloud_mw'})
-
-        x2_m1_row = row[['neg_sst_ir', 'neg_sst_mw', 'pos_cloud_ir', 'pos_cloud_mw']]
-        x2_m1_row = x2_m1_row.rename({'neg_sst_ir': 'ir', 'neg_sst_mw': 'mw', 'pos_cloud_ir': 'cloud_ir', 'pos_cloud_mw': 'cloud_mw'})
+        rows = [
+            ('x1_m1', self._get_triplet_row('sst1', 'cloud1', row)),
+            ('x1_m2', self._get_triplet_row('sst1', 'cloud2', row)),
+            ('x2_m1', self._get_triplet_row('sst2', 'cloud1', row)),
+        ]
         return {
-            # Despite init calls working with only `super()...`, this call
-            # requires the Python 2 syntax for calling parent methods
             k: self._get_data_by_row(row, flip_sst, flip_cloud)
-            for k, row in zip(('x1_m1', 'x1_m2', 'x2_m1'), (x1_m1_row, x1_m2_row, x2_m1_row))
+            for k, row in rows
         }
