@@ -120,8 +120,8 @@ class ReconModel(nn.Module):
         self.dec_data = Decoder(dec_data_chs, 1)
         self.dec_mask = Decoder(dec_mask_chs, 1)
 
-    def forward(self, x, return_z=False):
-        z = self.enc(x)
+    def forward(self, x, return_z=False, mask=None):
+        z = self.enc(x, mask=mask)
         z_data = z[:, :self.data_feat_dim]
         z_mask = z[:, self.data_feat_dim:]
         data = self.dec_data(z_data)
