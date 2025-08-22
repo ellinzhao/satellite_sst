@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import xarray as xr
 from torch.utils.data import Dataset
-from torchvision.transforms import InterpolationMode, Resize, RandomHorizontalFlip, RandomVerticalFlip
+from torchvision.transforms import RandomHorizontalFlip, RandomVerticalFlip
 
 from .smooth_fill import smooth_fill
 
@@ -21,71 +21,45 @@ def add_channel_dim(x):
     return x
 
 
-def downsample(ir, cloud_mask=None):
-    if cloud_mask is None:
-        pool = torch.nn.AvgPool2d(12, count_include_pad=False, padding=4)
-        return pool(ir)
-    pool = torch.nn.AvgPool2d(12, divisor_override=1, padding=4)
-    data_pool = pool(torch.where(cloud_mask, 0, ir))
-    mask_pool = pool((~cloud_mask).float())
-    nonpad = pool(torch.ones_like(ir))
-    frac_valid_px = mask_pool / nonpad
-    return torch.where(
-        frac_valid_px > 0.5,
-        data_pool / mask_pool,
-        np.nan
-    )
-
-
-def upsample(mw):
-    up = Resize(112, interpolation=InterpolationMode.BICUBIC)
-    return up(mw)
-
-
 def masked_mean(sst, cloud):
     return sst[~cloud].mean()
-
-
-def debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud):
-    ir_nan = ir_cloud | torch.isnan(ir_sst)
-    mw_nan = mw_cloud | torch.isnan(mw_sst)
-    ir_nan = downsample(ir_nan.float()) > 0
-    ir_sst = downsample(ir_sst)
-    both_clear = (~ir_nan) & (~mw_nan)
-
-    # Debias the MW data
-    mw_sst = mw_sst - mw_sst[both_clear].mean() + ir_sst[both_clear].mean()
-    return mw_sst
 
 
 class SSTDataset(Dataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0},
+        K=10, fill={'method': 'constant', 'value': 0}, fnd_sst_path=None, return_coord=False,
     ):
         self.sst_dir = sst_dir
         self.cloud_dir = cloud_dir
         self.split = split
         self.sst_df = self._load_csv(sst_dir)
         self.cloud_df = self._load_csv(cloud_dir)
+        self.fnd_sst = self._load_fnd_sst(fnd_sst_path)
         self.transform = transform
+        self.return_coord = return_coord
         self.fill = fill
         if preload:
             # SST files are larger, so preload these tiles only
             self.preload_tiles(self.sst_dir, self.sst_df)
             self.preload_tiles(self.cloud_dir, self.cloud_df)
 
-        self._generate_lat_lon_pairs()
         self._generate_random_samples(K)
 
-        self.hflip = RandomHorizontalFlip(1)
+        self.hflip = RandomHorizontalFlip(1)  # randomness is in the _get_random_flip fn
         self.vflip = RandomVerticalFlip(1)
+
+    def _load_fnd_sst(self, path):
+        if path is None:
+            return None
+        ds = xr.open_dataset(path)
+        da = ds['sst'].load()
+        return da
 
     def _load_csv(self, data_dir):
         df = pd.read_csv(os.path.join(data_dir, 'split.csv'))
         df = df[df['split'] == self.split]
-        df = df[['mw', 'ir']]
         return df
 
     def _generate_random_samples(self, K):
@@ -104,15 +78,7 @@ class SSTDataset(Dataset):
             cloud_indices = np.arange(0, K * N) % len(self.cloud_df)
 
         random_cloud_df = self.cloud_df.iloc[cloud_indices].set_index(idx)
-
-        self.df['cloud_ir'] = random_cloud_df['ir']
-        self.df['cloud_mw'] = random_cloud_df['mw']
-
-    def _generate_lat_lon_pairs(self):
-        pat = '([a-z0-9]+)_([a-z0-9]+)_([a-z0-9-.]+)_([a-z0-9-.]+).nc'
-        coord_df = self.sst_df['mw'].str.split(pat, regex=True, expand=True)
-        coord_df = coord_df.iloc[:, 3:5].astype(float)
-        self.sst_df['mw_point'] = list(zip(coord_df.iloc[:, 0], coord_df.iloc[:, 1]))
+        self.df['cloud'] = random_cloud_df['ir']
 
     def __len__(self):
         return len(self.df)
@@ -124,7 +90,6 @@ class SSTDataset(Dataset):
 
     def preload_tiles(self, data_dir, df):
         for _, row in df.iterrows():
-            self.get_tile(data_dir, row['mw'], save_to_cache=True)
             self.get_tile(data_dir, row['ir'], save_to_cache=True)
 
     def get_tile(self, data_dir, fname, save_to_cache=False):
@@ -149,8 +114,6 @@ class SSTDataset(Dataset):
             fill = masked_mean(sst, cloud)
         elif method == 'constant':
             fill = kwargs['value']
-        elif method == 'microwave':
-            fill = kwargs['microwave']
         sst = torch.where(cloud, fill, sst)
         return sst
 
@@ -158,28 +121,24 @@ class SSTDataset(Dataset):
         vflip = torch.rand(1).item() > 0.5
         hflip = torch.rand(1).item() > 0.5
 
-        def _flip(ir, mw):
+        def _flip(ir):
             if self.split == 'train':
                 if vflip:
                     # Random vertical flip
                     ir = self.vflip(ir)
-                    mw = self.vflip(mw)
                 if hflip:
                     # Random horizontal flip
                     ir = self.hflip(ir)
-                    mw = self.hflip(mw)
-            return ir, mw
+            return ir
         return _flip
 
-    def _transform_data(self, ir_sst, mw_sst, ir_cloud, mw_cloud):
+    def _transform_data(self, ir_sst, cloud):
         if self.transform is not None:
             if 'sst' in self.transform:
                 ir_sst = self.transform['sst'](ir_sst)
-                mw_sst = self.transform['sst'](mw_sst)
             if 'cloud' in self.transform:
-                ir_cloud = self.transform['cloud'](ir_cloud)
-                mw_cloud = self.transform['cloud'](mw_cloud)
-        return ir_sst, mw_sst, ir_cloud, mw_cloud
+                cloud = self.transform['cloud'](cloud)
+        return ir_sst, cloud
 
     def __getitem__(self, i):
         row = self.df.iloc[i]
@@ -188,62 +147,48 @@ class SSTDataset(Dataset):
         return self._get_data_by_row(row, flip_sst, flip_cloud)
 
     def _get_data_by_row(self, row, flip_sst=None, flip_cloud=None):
-        ir_sst, mw_sst = self.get_ir_mw_pair(self.sst_dir, row['ir'], row['mw'])
-        ir_cloud, mw_cloud = self.get_ir_mw_pair(self.cloud_dir, row['cloud_ir'], row['cloud_mw'])
-        ir_cloud = ir_cloud > 0
-        mw_cloud = mw_cloud > 0
+        ir_sst = self.get_ir_tensor(self.sst_dir, row['ir'])
+        cloud = self.get_ir_tensor(self.cloud_dir, row['cloud'])
+        cloud = cloud > 0
 
-        # Custom random flip, so that the flip is applied to both IR and MW
+        # Flips must occur in the dataset class because of the nan mask
         if flip_sst is not None:
-            ir_sst, mw_sst = flip_sst(ir_sst, mw_sst)
+            ir_sst = flip_sst(ir_sst)
         if flip_cloud is not None:
-            ir_cloud, mw_cloud = flip_cloud(ir_cloud, mw_cloud)
+            cloud = flip_cloud(cloud)
 
         # Add nan regions to cloud mask after flipping SST
-        ir_cloud = ir_cloud | torch.isnan(ir_sst)
-        mw_cloud = mw_cloud | torch.isnan(mw_sst)
+        cloud = cloud | torch.isnan(ir_sst)
 
         # After this point, all tensors have shape (C, H, W)
-        ir_sst, mw_sst, ir_cloud, mw_cloud = [
-            add_channel_dim(x) for x in (ir_sst, mw_sst, ir_cloud, mw_cloud)
-        ]
+        ir_sst, cloud = [add_channel_dim(x) for x in (ir_sst, cloud)]
+        ir_sst, cloud = self._transform_data(ir_sst, cloud)
 
-        # mw_sst = debias_mw(ir_sst, mw_sst, ir_cloud, mw_cloud)
-        ir_sst, mw_sst, ir_cloud, mw_cloud = self._transform_data(
-            ir_sst, mw_sst, ir_cloud, mw_cloud,
-        )
-        input_ir_base = downsample(ir_sst, ir_cloud)
-        ir_base_cloud = torch.isnan(input_ir_base)
-        input_ir_base = self.init_gaps(input_ir_base, ir_base_cloud)
-        input_mw_base = self.init_gaps(mw_sst, mw_cloud)
-        if (input_ir_base is None) and (input_mw_base is None):
-            raise ValueError('Both MW and IR are completely cloudy')
-        if input_ir_base is None:
-            input_base = input_mw_base
-        elif input_mw_base is None:
-            input_base = input_ir_base
-        else:
-            input_base = (input_ir_base + input_mw_base) * 0.5
-        input_base = upsample(input_base)
-
-        input_ir = self.init_gaps(ir_sst, ir_cloud, method='microwave', microwave=input_base)
-        return {
-            'input_ir': input_ir, 'input_base': input_base,
-            'gt_ir': ir_sst, 'cloud_ir': ir_cloud,
+        input_ir = self.init_gaps(ir_sst, cloud)
+        out = {
+            'input_ir': input_ir, 'gt_ir': ir_sst, 'cloud': cloud,
         }
+        if self.return_coord:
+            coord = row.loc[['lat_start', 'lon_start']].astype('float32')
+            coord = torch.from_numpy(coord.to_numpy())
+            out['coord'] = coord
+        return out
 
-    def get_ir_mw_pair(self, data_dir, ir_fname, mw_fname):
+    def get_ir_tensor(self, data_dir, ir_fname):
         _get_da = lambda fname: self.get_tile(data_dir, fname).sst.astype('float32')
-        mw_da = _get_da(mw_fname)
         ir_da = _get_da(ir_fname)
-        # mw_da = mw_da.interp_like(ir_da)
+        bounds = {
+            k: slice(ir_da[k][0], ir_da[k][-1])
+            for k in ('lat', 'lon')
+        }
+        if self.fnd_sst is not None:
+            fnd_sst_da = self.fnd_sst.sel(bounds)
+            ir_da = ir_da - fnd_sst_da
         ir = torch.from_numpy(ir_da.values)
-        mw = torch.from_numpy(mw_da.values)
 
         # Some tiles are (112, 113)
         ir = ir[:112, :112]
-        # mw = mw[:112, :112]
-        return ir, mw
+        return ir
 
 
 def get_input_target(data):

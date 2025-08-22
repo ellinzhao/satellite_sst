@@ -1,20 +1,20 @@
 import numpy as np
 import pandas as pd
 
-from .ir_dataset import IRDataset
+from .sst_dataset import SSTDataset
 
 
 def index_to_col(df):
     return df.index.to_series().reset_index(drop=True)
 
 
-class IRTripletDataset(IRDataset):
+class IRTripletDataset(SSTDataset):
 
     def __init__(
         self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0}, return_coord=False,
+        K=10, fill={'method': 'constant', 'value': 0}, fnd_sst_path=None, return_coord=False,
     ):
-        super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill, return_coord)
+        super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill, fnd_sst_path, return_coord)
 
     def _generate_random_samples(self, K):
         N = len(self.sst_df)
@@ -25,25 +25,30 @@ class IRTripletDataset(IRDataset):
         self.df.set_index(idx, inplace=True)
 
         rng = np.random.default_rng()
-
         cloud_indices = np.hstack([
             rng.choice(len(self.cloud_df), replace=False, size=(2, K))  # shuffle=False should provide slight speedup?
             for _ in range(N)
         ])
-        idx_repeat = np.vstack([np.arange(N) for _ in range(K)]).ravel(order='F')
 
-        neg_sst_idx = (rng.integers(50, N - 50, size=K * N) + idx_repeat) % N
-        # random idx that is +/- 50 away from each row
+        neg_sst_idx = []
+        for i in range(N):
+            ref_lat, ref_lon = self.sst_df.iloc[i][['lat_start', 'lon_start']]
+            dist = np.sqrt((self.sst_df['lat_start'] - ref_lat)**2 + (self.sst_df['lon_start'] - ref_lon)**2)
+            far_df = self.sst_df[dist > 5]  # 0.01° ~ 1km -> 5° ~ 500km
+            neg_sst_idx.append(far_df.sample(n=K).index.to_numpy())
+        neg_sst_idx = np.concat(neg_sst_idx)
 
-        cols = ['ir', 'mw', 'mw_point']
+        cols = ['ir', 'lat_start', 'lon_start']
         multiindex = pd.MultiIndex.from_product([['sst1', 'sst2', 'cloud1', 'cloud2'], cols])
         sst1 = self.df
         sst2 = self.sst_df.iloc[neg_sst_idx].set_index(idx)
         cloud1 = self.cloud_df.iloc[cloud_indices[0]].set_index(idx)
         cloud2 = self.cloud_df.iloc[cloud_indices[1]].set_index(idx)
+
         # The cloud location doesn't matter, but we add it so the multi-index is valid
-        cloud1['mw_point'] = [(np.nan, np.nan), ] * len(cloud1)
-        cloud2['mw_point'] = [(np.nan, np.nan), ] * len(cloud1)
+        for df in (cloud1, cloud2):
+            df['lat_start'] = [np.nan] * len(df)
+            df['lon_start'] = [np.nan] * len(df)
         triplet_df = pd.concat(
             [df_[cols] for df_ in (sst1, sst2, cloud1, cloud2)], axis=1
         )
@@ -51,11 +56,12 @@ class IRTripletDataset(IRDataset):
         self.df = triplet_df
 
     def _get_triplet_row(self, sst, cloud, row):
+        # sst is one of ['sst1', 'sst2'] i.e. the positive and negative labels
         ks = [
-            (sst, 'ir'), (sst, 'mw'), (sst, 'mw_point'), (cloud, 'ir'), (cloud, 'mw')
+            (sst, 'ir'), (cloud, 'ir'), (sst, 'lat_start'), (sst, 'lon_start')
         ]
         # These are the columns that the parent class expects to receive
-        new_cols = ['ir', 'mw', 'mw_point', 'cloud_ir', 'cloud_mw']
+        new_cols = ['ir', 'cloud', 'lat_start', 'lon_start']
         row = row.loc[ks]
         row.index = new_cols
         return row
