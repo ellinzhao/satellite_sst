@@ -29,7 +29,7 @@ class UpBlock(nn.Module):
     """
 
     def __init__(
-        self, in_channels, out_channels, upsampling_method="conv_transpose",
+        self, in_channels, out_channels, upsampling_method='conv_transpose',
     ):
         super().__init__()
 
