@@ -13,7 +13,7 @@ class SSIMLoss(nn.Module):
             data_range=1., size_average=True,
             channel=1, nonnegative_ssim=True,
         )
-        self.inverse_tform = inv_tform
+        self.inv_tform = inv_tform
 
     def _unnormalize(self, x):
         # Unstandardize the data and map to range [0, 1]
@@ -67,13 +67,13 @@ class FullLoss(nn.Module):
     def __init__(self, inv_tform, sst_weight=1, grad_weight=1):
         super().__init__()
         self.masked_l1 = MaskedLoss(nn.L1Loss)
-        self.inverse_tform = inv_tform
+        self.inv_tform = inv_tform
         self.sst_weight = sst_weight
         self.grad_weight = grad_weight
 
     def forward(self, pred, target, mask=None):
-        pred = self.inverse_tform(pred)
-        target = self.inverse_tform(target)
+        pred = self.inv_tform(pred)
+        target = self.inv_tform(target)
         sst_loss = self.masked_l1(pred, target)
 
         # Hacky way of toggling the gradient loss
@@ -91,11 +91,11 @@ class GradWeightedLoss(nn.Module):
     def __init__(self, inv_tform):
         super().__init__()
         self.masked_l1 = MaskedLoss(nn.L1Loss)
-        self.inverse_tform = inv_tform
+        self.inv_tform = inv_tform
 
     def forward(self, pred, target, mask=None):
-        pred = self.inverse_tform(pred)
-        target = self.inverse_tform(target)
+        pred = self.inv_tform(pred)
+        target = self.inv_tform(target)
 
         spatial_weights = gradient(target, axis=(-2, -1))
         spatial_weights = torch.nan_to_num(spatial_weights)
