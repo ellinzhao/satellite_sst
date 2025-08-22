@@ -41,9 +41,10 @@ class SSIMLoss(nn.Module):
 
 class MaskedLoss(nn.Module):
 
-    def __init__(self, loss_class):
+    def __init__(self, loss_class, inv_tform):
         super().__init__()
         self.loss = loss_class()
+        self.inv_tform = inv_tform
 
     def forward(self, pred, target, mask=None):
         known_mask = ~torch.isnan(target)
@@ -52,6 +53,8 @@ class MaskedLoss(nn.Module):
 
         # Sometimes nans still propogate even after maskings
         target = torch.nan_to_num(target)
+        target = self.inv_tform(target)
+        pred = self.inv_tform(pred)
 
         return self.loss(target[known_mask], pred[known_mask])
 
@@ -71,7 +74,6 @@ class FullLoss(nn.Module):
     def forward(self, pred, target, mask=None):
         pred = self.inverse_tform(pred)
         target = self.inverse_tform(target)
-
         sst_loss = self.masked_l1(pred, target)
 
         # Hacky way of toggling the gradient loss
