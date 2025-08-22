@@ -2,24 +2,28 @@ import matplotlib as mpl
 import torch.nn as nn
 from matplotlib.colors import Normalize
 
-
-SST_MIN = -4.2256  # 0.5897
-SST_MAX = 3.6316  # 30.396
-SST_MEAN = 18.9057  # 21.59
-SST_STD = 4.2406  # 2.94
+from dataclasses import dataclass
 
 
-def get_scaling_tforms(mode):
-    if mode == 'sst':
-        mean, std = 18.9057, 4.2406
-    elif mode == 'anomaly':
-        mean, std = 0, 1
-    return {'forward': ScaleSST(mean, std), 'inverse': UnscaleSST(mean, std)}
+@dataclass
+class DatasetStats:
+    name: str
+    vmin: float = -1
+    vmax: float = 1
+    mean: float = 0
+    std: float = 1
+
+
+STATS = {
+    'sst': DatasetStats('sst', 0.5897, 30.396, 21.59, 2.94),
+    'anomaly': DatasetStats('anomaly', -13.4471, 7.7939, -0.1983, 1.6712),
+}
 
 
 class ScaleSST(nn.Module):
 
     def __init__(self, mean, std):
+        super().__init__()
         self.mean = mean
         self.std = std
 
@@ -30,6 +34,7 @@ class ScaleSST(nn.Module):
 class UnscaleSST(nn.Module):
 
     def __init__(self, mean, std):
+        super().__init__()
         self.mean = mean
         self.std = std
 
@@ -45,3 +50,11 @@ class SSTtoColor(nn.Module):
     def forward(self, y):
         norm = Normalize(vmin=0.58967, vmax=31, clip=True)
         return self.cmap(norm(y))  # need to remove alpha channel
+
+
+def get_scaling_tforms(mode):
+    stats = STATS[mode]
+    return {
+        'forward': ScaleSST(stats.mean, stats.std),
+        'inverse': UnscaleSST(stats.mean, stats.std)
+    }
