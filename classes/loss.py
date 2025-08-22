@@ -2,19 +2,18 @@ import torch
 import torch.nn as nn
 from pytorch_msssim import SSIM
 
-from .transform import UnscaleSST, SST_MIN, SST_MAX
 from ..util import gradient
 
 
 class SSIMLoss(nn.Module):
 
-    def __init__(self):
+    def __init__(self, inv_tform):
         super().__init__()
         self.ssim_module = SSIM(
             data_range=1., size_average=True,
             channel=1, nonnegative_ssim=True,
         )
-        self.inverse_tform = UnscaleSST()
+        self.inverse_tform = inv_tform
 
     def _unnormalize(self, x):
         # Unstandardize the data and map to range [0, 1]
@@ -23,9 +22,6 @@ class SSIMLoss(nn.Module):
         tile_min = flat_x.min(dim=1).values[:, None, None, None]
         tile_max = flat_x.max(dim=1).values[:, None, None, None]
         x = (x - tile_min) / (tile_max - tile_min)
-
-        # x = self.inverse_tform(x)
-        # x = (x - SST_MIN) / (SST_MAX - SST_MIN)
         return x
 
     def forward(self, pred, target):
@@ -65,10 +61,10 @@ class MaskedLoss(nn.Module):
 
 class FullLoss(nn.Module):
 
-    def __init__(self, sst_weight=1, grad_weight=1):
+    def __init__(self, inv_tform, sst_weight=1, grad_weight=1):
         super().__init__()
         self.masked_l1 = MaskedLoss(nn.L1Loss)
-        self.inverse_tform = UnscaleSST()
+        self.inverse_tform = inv_tform
         self.sst_weight = sst_weight
         self.grad_weight = grad_weight
 
@@ -90,11 +86,10 @@ class FullLoss(nn.Module):
 
 class GradWeightedLoss(nn.Module):
 
-    def __init__(self, grad_preprocess_fn=lambda x: x):
+    def __init__(self, inv_tform):
         super().__init__()
         self.masked_l1 = MaskedLoss(nn.L1Loss)
-        self.inverse_tform = UnscaleSST()
-        self.grad_preprocess_fn = grad_preprocess_fn
+        self.inverse_tform = inv_tform
 
     def forward(self, pred, target, mask=None):
         pred = self.inverse_tform(pred)
