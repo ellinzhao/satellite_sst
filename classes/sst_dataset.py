@@ -194,6 +194,14 @@ class SSTDataset(Dataset):
         ir = ir[:112, :112]
         return ir
 
+    def __len__(self):
+        return len(self.df)
+
+    def __del__(self):
+        for _, v in DS_CACHE.items():
+            # Close open file handles
+            v.close()
+
 
 def get_input_target(data):
     input_base = data['input_base']
