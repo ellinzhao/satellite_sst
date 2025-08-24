@@ -28,23 +28,27 @@ def masked_mean(sst, cloud):
 class SSTDataset(Dataset):
 
     def __init__(
-        self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0}, fnd_sst_path=None, return_coord=False,
+        self, var, sst_dir, cloud_dir, split, K=10, transform=None,
+        fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
+        return_coord=False, preload=True,
     ):
+        if var == 'ssta':
+            assert fnd_sst_path is not None, '`fnd_sst_path must be specified if `var=ssta`'
+        self.var = var
         self.sst_dir = sst_dir
         self.cloud_dir = cloud_dir
         self.split = split
+        self.transform = transform
+        self.fill = fill
+        self.return_coord = return_coord
+
         self.sst_df = self._load_csv(sst_dir)
         self.cloud_df = self._load_csv(cloud_dir)
         self.fnd_sst = self._load_fnd_sst(fnd_sst_path)
-        self.transform = transform
-        self.return_coord = return_coord
-        self.fill = fill
+
         if preload:
-            # SST files are larger, so preload these tiles only
             self.preload_tiles(self.sst_dir, self.sst_df)
             self.preload_tiles(self.cloud_dir, self.cloud_df)
-
         self._generate_random_samples(K)
 
         self.hflip = RandomHorizontalFlip(1)  # randomness is in the _get_random_flip fn
@@ -79,14 +83,6 @@ class SSTDataset(Dataset):
 
         random_cloud_df = self.cloud_df.iloc[cloud_indices].set_index(idx)
         self.df['cloud'] = random_cloud_df['ir']
-
-    def __len__(self):
-        return len(self.df)
-
-    def __del__(self):
-        for _, v in DS_CACHE.items():
-            # Close open file handles
-            v.close()
 
     def preload_tiles(self, data_dir, df):
         for _, row in df.iterrows():
@@ -150,6 +146,9 @@ class SSTDataset(Dataset):
         ir_sst = self.get_ir_tensor(self.sst_dir, row['ir'])
         cloud = self.get_ir_tensor(self.cloud_dir, row['cloud'])
         cloud = cloud > 0
+        if self.var == 'ssta':
+            fnd_sst = self.get_fnd_sst_tile(row)
+            ir_sst = ir_sst - fnd_sst
 
         # Flips must occur in the dataset class because of the nan mask
         if flip_sst is not None:
@@ -172,18 +171,23 @@ class SSTDataset(Dataset):
             coord = row.loc[['lat_start', 'lon_start']].astype('float32')
             coord = torch.from_numpy(coord.to_numpy())
             out['coord'] = coord
+        if self.var == 'ssta':
+            out['fnd_sst'] = add_channel_dim(fnd_sst)
         return out
+
+    def get_fnd_sst_tile(self, row):
+        bounds = {
+            k: slice(row[f'{k}_start'], row[f'{k}_end'])
+            for k in ('lat', 'lon')
+        }
+        da = self.fnd_sst.sel(bounds)
+        da = torch.from_numpy(da.values)
+        da = da[:112, :112]
+        return da
 
     def get_ir_tensor(self, data_dir, ir_fname):
         _get_da = lambda fname: self.get_tile(data_dir, fname).sst.astype('float32')
         ir_da = _get_da(ir_fname)
-        bounds = {
-            k: slice(ir_da[k][0], ir_da[k][-1])
-            for k in ('lat', 'lon')
-        }
-        if self.fnd_sst is not None:
-            fnd_sst_da = self.fnd_sst.sel(bounds)
-            ir_da = ir_da - fnd_sst_da
         ir = torch.from_numpy(ir_da.values)
 
         # Some tiles are (112, 113)
@@ -194,8 +198,3 @@ class SSTDataset(Dataset):
 def get_input_target(data):
     input_base = data['input_base']
     return data['input_ir'] - input_base, data['gt_ir'] - input_base
-
-
-def get_recon_target(data, pred):
-    input_base = data['input_base']
-    return pred + input_base, data['gt_ir']
