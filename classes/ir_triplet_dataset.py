@@ -11,10 +11,14 @@ def index_to_col(df):
 class IRTripletDataset(SSTDataset):
 
     def __init__(
-        self, sst_dir, cloud_dir, split, preload=True, transform=None,
-        K=10, fill={'method': 'constant', 'value': 0}, fnd_sst_path=None, return_coord=False,
+        self, var, sst_dir, cloud_dir, split, K=10, transform=None,
+        fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
+        return_coord=False, preload=True,
     ):
-        super().__init__(sst_dir, cloud_dir, split, preload, transform, K, fill, fnd_sst_path, return_coord)
+        super().__init__(
+            var, sst_dir, cloud_dir, split, K=K, transform=transform, fill=fill,
+            fnd_sst_path=fnd_sst_path, return_coord=return_coord, preload=preload,
+        )
 
     def _generate_random_samples(self, K):
         N = len(self.sst_df)
