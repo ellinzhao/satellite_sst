@@ -1,8 +1,27 @@
 import torch
+import torch.functional as F
 import torch.nn as nn
 from pytorch_msssim import SSIM
 
 from ..util import gradient
+
+
+def dilate_mask(mask, k=7):
+    dtype = mask.dtype
+    mask = mask.float()
+    _, T, _, _ = mask.shape
+    kernel = torch.ones((T, T, k, k)).to(mask.device)
+    mask = F.conv2d(mask, kernel, padding='same')
+    mask = mask > 0
+    return mask.to(dtype)  # return mask as the original dtype
+
+
+def batch_masked_mean(x, mask=None, keep_dim=True):
+    mask = mask or 1
+    mean = torch.sum(x * mask, dim=(1, 2, 3), keepdim=True) / torch.sum(mask, dim=(1, 2, 3), keepdim=True)
+    if keep_dim:
+        mean = torch.ones_like(x) * mean
+    return mean
 
 
 class SSIMLoss(nn.Module):
@@ -30,8 +49,7 @@ class SSIMLoss(nn.Module):
         target = torch.nan_to_num(target)
         pred = torch.nan_to_num(pred)
 
-        target_mean = torch.sum(target * mask, dim=(1, 2, 3), keepdim=True) / torch.sum(mask, dim=(1, 2, 3), keepdim=True)
-        target_mean = torch.ones_like(pred) * target_mean
+        target_mean = batch_masked_mean(target, mask, keep_dim=True)
         mask = mask.bool()
 
         target = torch.where(mask, target_mean, target)
