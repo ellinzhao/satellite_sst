@@ -16,8 +16,7 @@ def dilate_mask(mask, k=7):
     return mask.to(dtype)  # return mask as the original dtype
 
 
-def batch_masked_mean(x, mask=None, keep_dim=True):
-    mask = mask or 1
+def batch_masked_mean(x, mask=1, keep_dim=True):
     mean = torch.sum(x * mask, dim=(1, 2, 3), keepdim=True) / torch.sum(mask, dim=(1, 2, 3), keepdim=True)
     if keep_dim:
         mean = torch.ones_like(x) * mean
