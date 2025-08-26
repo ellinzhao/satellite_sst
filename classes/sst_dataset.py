@@ -30,7 +30,7 @@ class SSTDataset(Dataset):
     def __init__(
         self, var, sst_dir, cloud_dir, split, K=10, transform=None,
         fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
-        return_coord=False, preload=True,
+        return_coord=False, preload=True, cloud_ratio_range=slice(0.1, 0.85),
     ):
         if var == 'ssta':
             assert fnd_sst_path is not None, '`fnd_sst_path must be specified if `var=ssta`'
@@ -41,9 +41,10 @@ class SSTDataset(Dataset):
         self.transform = transform
         self.fill = fill
         self.return_coord = return_coord
+        self.cloud_ratio_range = cloud_ratio_range
 
-        self.sst_df = self._load_csv(sst_dir)
-        self.cloud_df = self._load_csv(cloud_dir)
+        self.sst_df = self._load_csv(sst_dir, var='sst')
+        self.cloud_df = self._load_csv(cloud_dir, var='cloud')
         self.fnd_sst = self._load_fnd_sst(fnd_sst_path)
 
         if preload:
@@ -61,9 +62,13 @@ class SSTDataset(Dataset):
         da = ds['sst'].load()
         return da
 
-    def _load_csv(self, data_dir):
+    def _load_csv(self, data_dir, var):
         df = pd.read_csv(os.path.join(data_dir, 'split.csv'))
         df = df[df['split'] == self.split]
+        if var == 'cloud':
+            filt = (df['cloud_ratio'] > self.cloud_ratio_range.start)
+            filt &= (df['cloud_ratio'] <= self.cloud_ratio_range.stop)
+            df = df[filt]
         return df
 
     def _generate_random_samples(self, K):

@@ -13,11 +13,12 @@ class IRTripletDataset(SSTDataset):
     def __init__(
         self, var, sst_dir, cloud_dir, split, K=10, transform=None,
         fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
-        return_coord=False, preload=True,
+        return_coord=False, preload=True, cloud_ratio_range=slice(0.1, 0.85),
     ):
         super().__init__(
             var, sst_dir, cloud_dir, split, K=K, transform=transform, fill=fill,
             fnd_sst_path=fnd_sst_path, return_coord=return_coord, preload=preload,
+            cloud_ratio_range=cloud_ratio_range,
         )
 
     def _generate_random_samples(self, K):
@@ -72,8 +73,6 @@ class IRTripletDataset(SSTDataset):
 
     def __getitem__(self, i):
         row = self.df.iloc[i]
-
-        # can add more flips for sst1 and sst2, rather than applying the same flip for sst1 and sst2
         flip_sst = self._get_random_flip()
         flip_cloud = self._get_random_flip()
         rows = [
