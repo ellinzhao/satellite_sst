@@ -1,0 +1,68 @@
+device: "cpu"
+seed: 3
+sst_dir: "/Users/ellin/data/sst"
+cloud_dir: "/Users/ellin/data/cloud"
+
+var: sst
+use_triplet: false
+use_loc: false
+
+# Model must be the ResNet backbone autoencoder
+model:
+  n_enc_layers: 3
+  dec_data_chs: [384, 256, 64]
+  dec_mask_chs: [128, 64, 32]
+
+optim:
+  name: Adam
+  lr: 0.0001
+
+scheduler:
+
+train:
+  name: SSTDataset
+  kwargs:
+    K: 2
+    preload: false
+    return_coord: ${use_loc}
+    # fnd_sst_path: "mur25_2012_foundation.nc"
+    cloud_ratio_range: [0.4, 0.8]
+  loader:
+    batch_size: 1
+    pin_memory: true
+    num_workers: 0
+    # prefetch_factor: 6
+    shuffle: true
+
+# Val dataset is always SSTDataset regardless of the train dataset
+val:
+  name: SSTDataset
+  kwargs:
+    K: 1
+    preload: false
+    return_coord: ${use_loc}
+    # fnd_sst_path: "mur25_2012_foundation.nc"
+    cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
+  loader:
+    batch_size: 1
+    pin_memory: true
+    num_workers: 0
+    # prefetch_factor: 6
+    shuffle: false
+
+loss:
+  sst_loss:
+    name: MaskedLoss
+    weight: 1
+  # ssim_loss:
+  #   name: SSIMLoss
+  #   weight: 5
+  # pred_mask_sst_loss:
+  #   name: PredMaskReconLoss
+  #   weight: 1
+  # grad_weight_loss:
+  #   name: GradWeightedLoss
+  #   weight: 1
+  mask_loss:
+    name: MaskBCELoss
+    weight: 1

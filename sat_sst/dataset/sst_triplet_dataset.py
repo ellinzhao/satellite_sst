@@ -8,12 +8,12 @@ def index_to_col(df):
     return df.index.to_series().reset_index(drop=True)
 
 
-class IRTripletDataset(SSTDataset):
+class SSTTripletDataset(SSTDataset):
 
     def __init__(
         self, var, sst_dir, cloud_dir, split, K=10, transform=None,
         fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
-        return_coord=False, preload=True, cloud_ratio_range=slice(0.1, 0.85),
+        return_coord=False, preload=True, cloud_ratio_range=(0.1, 0.85),
     ):
         super().__init__(
             var, sst_dir, cloud_dir, split, K=K, transform=transform, fill=fill,

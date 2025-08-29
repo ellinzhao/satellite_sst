@@ -7,7 +7,7 @@ import xarray as xr
 from torch.utils.data import Dataset
 from torchvision.transforms import RandomHorizontalFlip, RandomVerticalFlip
 
-from .smooth_fill import smooth_fill
+from ..smooth_fill import smooth_fill
 
 
 DS_CACHE = {}
@@ -30,7 +30,7 @@ class SSTDataset(Dataset):
     def __init__(
         self, var, sst_dir, cloud_dir, split, K=10, transform=None,
         fill={'method': 'constant', 'value': 0}, fnd_sst_path=None,
-        return_coord=False, preload=True, cloud_ratio_range=slice(0.1, 0.85),
+        return_coord=False, preload=True, cloud_ratio_range=(0.1, 0.85),
     ):
         if var == 'ssta':
             assert fnd_sst_path is not None, '`fnd_sst_path must be specified if `var=ssta`'
@@ -66,8 +66,8 @@ class SSTDataset(Dataset):
         df = pd.read_csv(os.path.join(data_dir, 'split.csv'))
         df = df[df['split'] == self.split]
         if var == 'cloud':
-            filt = (df['cloud_ratio'] > self.cloud_ratio_range.start)
-            filt &= (df['cloud_ratio'] <= self.cloud_ratio_range.stop)
+            filt = (df['cloud_ratio'] > self.cloud_ratio_range[0])
+            filt &= (df['cloud_ratio'] <= self.cloud_ratio_range[1])
             df = df[filt]
         return df
 
@@ -133,13 +133,13 @@ class SSTDataset(Dataset):
             return ir
         return _flip
 
-    def _transform_data(self, ir_sst, cloud):
+    def _transform_data(self, sst, cloud):
         if self.transform is not None:
             if 'sst' in self.transform:
-                ir_sst = self.transform['sst'](ir_sst)
+                sst = self.transform['sst'](sst)
             if 'cloud' in self.transform:
                 cloud = self.transform['cloud'](cloud)
-        return ir_sst, cloud
+        return sst, cloud
 
     def __getitem__(self, i):
         row = self.df.iloc[i]
@@ -148,29 +148,29 @@ class SSTDataset(Dataset):
         return self._get_data_by_row(row, flip_sst, flip_cloud)
 
     def _get_data_by_row(self, row, flip_sst=None, flip_cloud=None):
-        ir_sst = self.get_ir_tensor(self.sst_dir, row['ir'])
-        cloud = self.get_ir_tensor(self.cloud_dir, row['cloud'])
+        sst = self.get_tensor(self.sst_dir, row['ir'])
+        cloud = self.get_tensor(self.cloud_dir, row['cloud'])
         cloud = cloud > 0
         if self.var == 'ssta':
             fnd_sst = self.get_fnd_sst_tile(row)
-            ir_sst = ir_sst - fnd_sst
+            sst = sst - fnd_sst
 
         # Flips must occur in the dataset class because of the nan mask
         if flip_sst is not None:
-            ir_sst = flip_sst(ir_sst)
+            sst = flip_sst(sst)
         if flip_cloud is not None:
             cloud = flip_cloud(cloud)
 
         # Add nan regions to cloud mask after flipping SST
-        cloud = cloud | torch.isnan(ir_sst)
+        cloud = cloud | torch.isnan(sst)
 
         # After this point, all tensors have shape (C, H, W)
-        ir_sst, cloud = [add_channel_dim(x) for x in (ir_sst, cloud)]
-        ir_sst, cloud = self._transform_data(ir_sst, cloud)
+        sst, cloud = [add_channel_dim(x) for x in (sst, cloud)]
+        sst, cloud = self._transform_data(sst, cloud)
 
-        input_ir = self.init_gaps(ir_sst, cloud)
+        input_sst = self.init_gaps(sst, cloud)
         out = {
-            'input_ir': input_ir, 'gt_ir': ir_sst, 'cloud': cloud,
+            'input_sst': input_sst, 'target_sst': sst, 'target_mask': cloud,
         }
         if self.return_coord:
             coord = row.loc[['lat_start', 'lon_start']].astype('float32')
@@ -190,10 +190,10 @@ class SSTDataset(Dataset):
         da = da[:112, :112]
         return da
 
-    def get_ir_tensor(self, data_dir, ir_fname):
+    def get_tensor(self, data_dir, fname):
         _get_da = lambda fname: self.get_tile(data_dir, fname).sst.astype('float32')
-        ir_da = _get_da(ir_fname)
-        ir = torch.from_numpy(ir_da.values)
+        da = _get_da(fname)
+        ir = torch.from_numpy(da.values)
 
         # Some tiles are (112, 113)
         ir = ir[:112, :112]
@@ -206,8 +206,3 @@ class SSTDataset(Dataset):
         for _, v in DS_CACHE.items():
             # Close open file handles
             v.close()
-
-
-def get_input_target(data):
-    input_base = data['input_base']
-    return data['input_ir'] - input_base, data['gt_ir'] - input_base

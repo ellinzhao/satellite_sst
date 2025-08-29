@@ -48,7 +48,6 @@ def smooth_fill(input, width_base=7, increment_every_k=2):
             sigma = k
         else:
             warnings.warn('Smooth fill has not converged')
-            print(input.shape, torch.isnan(input).float().mean())
             tile_mean = input[~torch.isnan(input)].mean()
             return torch.where(torch.isnan(input), tile_mean, input)
         input = _fill_step(input, k, sigma=sigma)

@@ -62,7 +62,7 @@ class Resnet50Encoder(nn.Module):
 
         self.input_block = ConvBlock(in_ch, 64)
         self.mask_token = nn.Parameter(mask_token_init_fn(64)[None, :, None, None])
-        self.input_pool = resnet_children[3]  # todo: check if perf is worse without this
+        self.input_pool = resnet_children[3]  # TODO(ellin): check if perf is worse without this
         # if this pool op is removed, add a pool op before the final conv
 
         down_blocks = []
@@ -76,12 +76,15 @@ class Resnet50Encoder(nn.Module):
         self.use_mask = use_mask
 
     def forward(self, x, mask=None):
-        if self.use_mask:
-            if mask is None:
-                raise ValueError('model is setup to use a mask token but no mask is provided')
-            else:
-                x = torch.where(mask, self.mask_token, x)
+        if self.use_mask and mask is None:
+            raise ValueError('model is setup to use a mask token but no mask is provided')
+        if not self.use_mask and mask is not None:
+            print('Mask provided but will not be used!')
+
         x = self.input_block(x)
+        if self.use_mask:
+            x = torch.where(mask, self.mask_token, x)
+
         x = self.input_pool(x)
         for block in self.down_blocks:
             x = block(x)
@@ -95,7 +98,7 @@ class Decoder(nn.Module):
         up_blocks = []
         for i in range(len(chs) - 1):
             up_blocks.append(UpBlock(chs[i], chs[i + 1]))
-        self.up_blocks = nn.ModuleList(up_blocks)  # can turn this into a sequential
+        self.up_blocks = nn.ModuleList(up_blocks)  # TODO(ellin): change to nn.Sequential
         self.out = nn.Conv2d(chs[-1], out_ch, kernel_size=1, stride=1)
 
     def forward(self, x):
@@ -109,7 +112,8 @@ class ReconModel(nn.Module):
 
     def __init__(self, n_enc_layers=3, dec_data_chs=[384, 256, 64], dec_mask_chs=[128, 64, 32]):
         super().__init__()
-        self.enc = Resnet50Encoder(1, n_enc_layers)  # can't change the chs of the resnet [64, 256, 512, 1024, 2048]
+        # TODO: use_mask should be true!!
+        self.enc = Resnet50Encoder(1, n_enc_layers, use_mask=True)  # can't change the chs of the resnet [64, 256, 512, 1024, 2048]
 
         self.enc_feat_dim = self.enc.chs[-1]
         self.data_feat_dim = dec_data_chs[0]
@@ -118,7 +122,7 @@ class ReconModel(nn.Module):
         assert self.data_feat_dim + self.mask_feat_dim == self.enc_feat_dim
 
         self.dec_data = Decoder(dec_data_chs, 1)
-        self.dec_mask = Decoder(dec_mask_chs, 1)
+        self.dec_mask = Decoder(dec_mask_chs, 2)
 
     def forward(self, x, return_z=False, mask=None):
         z = self.enc(x, mask=mask)
@@ -126,6 +130,8 @@ class ReconModel(nn.Module):
         z_mask = z[:, self.data_feat_dim:]
         data = self.dec_data(z_data)
         mask = self.dec_mask(z_mask)
+        out = {'pred_sst': data, 'pred_mask': mask}
         if return_z:
-            return data, mask, z_data, z_mask
-        return data, mask
+            out['z_sst'] = z_data
+            out['z_mask'] = z_mask
+        return out

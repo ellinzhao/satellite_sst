@@ -16,7 +16,7 @@ class DatasetStats:
 
 STATS = {
     'sst': DatasetStats('sst', 0.5897, 30.396, 21.59, 2.94),
-    'anomaly': DatasetStats('anomaly', -13.4471, 7.7939, -0.1983, 1.6712),
+    'ssta': DatasetStats('ssta', -13.4471, 7.7939, -0.1983, 1.6712),
 }
 
 
