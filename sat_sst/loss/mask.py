@@ -12,5 +12,5 @@ class MaskBCELoss(nn.Module):
         pred = data.get('pred_mask')
         # convert target to one hot encdoed array
         target = target.bool()
-        target = torch.cat([target, ~target], dim=1).float()
+        target = torch.cat([~target, target], dim=1).float()
         return self.bce(pred, target)
