@@ -33,8 +33,6 @@ def train_epoch(loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls,
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
-        if i > 1:
-            break
     if scheduler:
         scheduler.step()
     if plot:
