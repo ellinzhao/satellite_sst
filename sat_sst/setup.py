@@ -50,7 +50,7 @@ def setup_model_optim(cfg, device):
     return model, optimizer
 
 
-def setup_loss(cfg):
+def setup_loss(cfg, debug=False):
     loss_names = cfg.loss
     losses = []
     weights = []
@@ -60,4 +60,4 @@ def setup_loss(cfg):
         loss = loss_cls()
         losses.append(loss)
         weights.append(loss_cfg.weight)
-    return sat_sst.loss.CombinedLoss(losses, weights)
+    return sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
