@@ -38,7 +38,7 @@ def train_epoch(loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls,
     if scheduler:
         scheduler.step()
     if plot:
-        plot_model_data(out, i=0, save_name='test.png')
+        plot_model_data(out, i=0, save_name=f'epoch_{epoch}.png')
     return epoch_loss / len(loader)
 
 

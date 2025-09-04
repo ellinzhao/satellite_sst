@@ -1,5 +1,13 @@
+import matplotlib as mpl
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def setup(font_dir='/content/drive/MyDrive/sst/Avenir'):
+    for font in fm.findSystemFonts(font_dir):
+        fm.fontManager.addfont(font)
+    mpl.rcParams['font.family'] = 'Avenir'
 
 
 def plot_model_data(data, i=None, save_name='test.png'):
@@ -35,6 +43,4 @@ def plot_model_data(data, i=None, save_name='test.png'):
         fig.colorbar(im, ax=axes[1][i])
     plt.tight_layout()
     fig.savefig(save_name)
-
-    err = plot_data['target_sst'] - plot_data['pred_sst']
-    print(np.nanmean(np.abs(err)))
+    # err = plot_data['target_sst'] - plot_data['pred_sst']
