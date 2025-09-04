@@ -54,7 +54,7 @@ class Resnet50Encoder(nn.Module):
 
     CHS = [64, 256, 512, 1024, 2048]
 
-    def __init__(self, in_ch, n_layers, use_mask=False, mask_token_init_fn=lambda dim: torch.randn(dim)):
+    def __init__(self, in_ch, n_layers, use_mask=False, mask_token_init_fn=lambda dim: torch.zeros(dim)):
         super().__init__()
         assert n_layers <= 4 and n_layers > 0
         resnet = torch.hub.load('pytorch/vision', 'resnet50', weights='IMAGENET1K_V2')
