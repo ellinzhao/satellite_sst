@@ -1,18 +1,9 @@
-import torch
-from omegaconf import OmegaConf
-
-from sat_sst.setup import set_seed, setup_data, setup_loss, setup_model_optim
+from sat_sst.setup import load_components
 from sat_sst.train import train_epoch, evaluate_dataset
 
 
-cfg = OmegaConf.load('default.yaml')
+cfg, device, train_loader, val_loader, wrapper_cls, model, optim, scheduler, loss = load_components('default.yaml')
 
-set_seed(cfg.seed)
-device = torch.device(cfg.device)
-train_loader, val_loader, wrapper_cls = setup_data(cfg)
-model, optim = setup_model_optim(cfg, device)
-loss = setup_loss(cfg)
-
-loss_val = train_epoch(train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls, plot=True)
+train_loss = train_epoch(train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls, plot=True)
 eval_loss = evaluate_dataset(val_loader, model, device, cfg.use_loc, loss, wrapper_cls)
-print(loss_val, eval_loss)
+print(train_loss, eval_loss)

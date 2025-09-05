@@ -37,6 +37,7 @@ def plot_model_data(data, i=None, save_name='test.png'):
         fig.colorbar(im, ax=axes[0][i])
         axes[0][i].set_title(c)
         if c == 'input':
+            axes[1][i].axis('off')
             continue
         mask = plot_data[f'{c}_mask']
         im = axes[1][i].imshow(mask, **mask_kwargs)
