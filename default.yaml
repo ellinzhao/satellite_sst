@@ -3,7 +3,7 @@ seed: 3
 sst_dir: "/Users/ellin/data/sst"
 cloud_dir: "/Users/ellin/data/cloud"
 
-var: sst
+var: ssta
 use_triplet: false
 use_loc: false
 
@@ -25,7 +25,7 @@ train:
     K: 1
     preload: false
     return_coord: ${use_loc}
-    # fnd_sst_path: "mur25_2012_foundation.nc"
+    fnd_sst_path: "mur25_2012_foundation.nc"
     cloud_ratio_range: [0.4, 0.8]
   loader:
     batch_size: 32
@@ -41,7 +41,7 @@ val:
     K: 1
     preload: false
     return_coord: ${use_loc}
-    # fnd_sst_path: "mur25_2012_foundation.nc"
+    fnd_sst_path: "mur25_2012_foundation.nc"
     cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
   loader:
     batch_size: 32
@@ -65,4 +65,4 @@ loss:
   #   weight: 1
   mask_loss:
     name: MaskBCELoss
-    weight: 1
+    weight: 0.1

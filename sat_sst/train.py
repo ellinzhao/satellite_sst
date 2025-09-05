@@ -26,7 +26,8 @@ def train_epoch(loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls,
     model.train()
     use_triplet = False
     epoch_loss = 0.
-    for _, data in enumerate(tqdm(loader)):
+    pbar = tqdm(loader)
+    for i, data in enumerate(pbar):
         out = None  # prevent memory leak?
         optimizer.zero_grad()
         out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
@@ -35,6 +36,7 @@ def train_epoch(loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls,
 
         optimizer.step()
         epoch_loss += loss.item()
+    pbar.close()
     if scheduler:
         scheduler.step()
     if plot:
@@ -69,14 +71,14 @@ def train_triplet_epoch(loader, model, optimizer, device, use_loc, loss_fn, trip
     return epoch_loss / len(loader)
 
 
-def evaluate_dataset(loader, model, loss_fn, use_loc):
+def evaluate_dataset(loader, model, device, use_loc, loss_fn, wrapper_cls):
     model.eval()
     use_triplet = False  # the triplet configuration is not needed for eval
-    test_loss = 0
+    test_loss = 0.
     with torch.no_grad():
         for data in loader:
-            out = process_batch(data, model, use_loc, use_triplet)
-            loss = loss_fn(out['pred_sst'], out['target_sst'], mask=out['target_mask'].bool())
+            out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
+            loss = loss_fn(out)
             test_loss += loss.item()
     test_loss /= len(loader)
     return test_loss

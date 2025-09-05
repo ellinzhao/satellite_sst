@@ -43,4 +43,5 @@ def plot_model_data(data, i=None, save_name='test.png'):
         fig.colorbar(im, ax=axes[1][i])
     plt.tight_layout()
     fig.savefig(save_name)
+    plt.close()
     # err = plot_data['target_sst'] - plot_data['pred_sst']
