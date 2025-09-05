@@ -22,16 +22,16 @@ scheduler:
 train:
   name: SSTDataset
   kwargs:
-    K: 2
+    K: 1
     preload: false
     return_coord: ${use_loc}
     # fnd_sst_path: "mur25_2012_foundation.nc"
     cloud_ratio_range: [0.4, 0.8]
   loader:
-    batch_size: 1
+    batch_size: 32
     pin_memory: true
-    num_workers: 0
-    # prefetch_factor: 6
+    num_workers: 2
+    prefetch_factor: 6
     shuffle: true
 
 # Val dataset is always SSTDataset regardless of the train dataset
@@ -44,10 +44,10 @@ val:
     # fnd_sst_path: "mur25_2012_foundation.nc"
     cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
   loader:
-    batch_size: 1
+    batch_size: 32
     pin_memory: true
-    num_workers: 0
-    # prefetch_factor: 6
+    num_workers: 2
+    prefetch_factor: 6
     shuffle: false
 
 loss:
