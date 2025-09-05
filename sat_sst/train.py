@@ -1,4 +1,5 @@
 import torch
+from tqdm.notebook import tqdm
 
 from .plotting import plot_model_data
 
@@ -25,7 +26,7 @@ def train_epoch(loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls,
     model.train()
     use_triplet = False
     epoch_loss = 0.
-    for i, data in enumerate(loader):
+    for i, data in tqdm(enumerate(loader)):
         out = None  # prevent memory leak?
         optimizer.zero_grad()
         out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
