@@ -1,12 +1,18 @@
 device: "cpu"
 seed: 3
 
-run_name: "default"
 sst_dir: "/Users/ellin/data/sst"
 cloud_dir: "/Users/ellin/data/cloud"
 fnd_sst_path: "/Users/ellin/data/mur25_2012_foundation.nc"
+save_dir: "/Users/ellin/sat_sst_saves"
 
-epochs: 10
+epochs: 6
+save_epoch: 2
+
+wandb:
+  entity: ellinzh
+  project: sat_sst
+  name: default
 
 var: ssta
 use_triplet: false

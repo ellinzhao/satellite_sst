@@ -1,12 +1,18 @@
 device: "cuda"
 seed: 3
 
-run_name: "default_colab"
 sst_dir: "/tmp/sst"
 cloud_dir: "/tmp/cloud"
 fnd_sst_path: "mur25_2012_foundation.nc"
+save_dir: "/content/drive/MyDrive/sst/runs"
 
-epochs: 10
+epochs: 6
+save_epoch: 2
+
+wandb:
+  entity: ellinzh
+  project: sat_sst
+  name: default_colab
 
 var: ssta
 use_triplet: false

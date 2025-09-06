@@ -1,8 +1,10 @@
 import random
+import os
 
 import numpy as np
 import torch
 import torch.optim
+import wandb
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
@@ -34,7 +36,11 @@ def load_components(fname):
     train_loader, val_loader, wrapper_cls = setup_data(cfg)
     model, optim, scheduler = setup_model_optim(cfg, device)
     loss = setup_loss(cfg)
-    return cfg, device, train_loader, val_loader, wrapper_cls, model, optim, scheduler, loss
+    start_epoch, run = load_training_state(cfg, model, optim, scheduler)
+    return (
+        cfg, device, train_loader, val_loader, wrapper_cls,
+        model, optim, scheduler, loss, start_epoch, run,
+    )
 
 
 def set_seed(i):
@@ -83,3 +89,61 @@ def setup_loss(cfg, debug=False):
         losses.append(loss)
         weights.append(loss_cfg.weight)
     return sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
+
+
+def save_checkpoint(cfg, epoch, model, optimizer, scheduler):
+    state = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    if scheduler:
+        state['scheduler_state_dict'] = scheduler.state_dict()
+    save_path = os.path.join(cfg.save_dir, cfg.wandb.name, 'training_ckpt.tar')
+    torch.save(state, save_path)
+    print('saved to ', save_path)
+
+
+def check_cfg_match(cfg1, cfg2):
+    cfg1 = OmegaConf.to_object(cfg1)
+    cfg2 = OmegaConf.to_object(cfg2)
+    cfg_wandb1 = cfg1.pop('wandb', {})
+    cfg_wandb2 = cfg2.pop('wandb', {})
+    id1 = cfg_wandb1.pop('id', None)
+    id2 = cfg_wandb2.pop('id', None)
+    if id1 is not None and id2 is not None:
+        return id1 == id2
+    return cfg1 == cfg2
+
+
+def load_training_state(cfg, model, optimizer, scheduler):
+    run_save_dir = os.path.join(cfg.save_dir, cfg.wandb.name)
+    cfg_save_path = os.path.join(run_save_dir, 'config.yaml')
+    epoch = 0
+    if os.path.isdir(run_save_dir) and os.path.isfile(cfg_save_path):
+        saved_cfg = OmegaConf.load(cfg_save_path)
+        assert check_cfg_match(cfg, saved_cfg)
+        run_id = saved_cfg.wandb.id
+        run = wandb.init(entity=cfg.wandb.entity, project=cfg.wandb.project, id=run_id, resume='must')
+
+        # Even if run exists, it is possible that checkpoint was NOT saved
+        ckpt_path = os.path.join(run_save_dir, 'training_ckpt.tar')
+        if os.path.isfile(ckpt_path):
+            ckpt = torch.load(ckpt_path, weights_only=True)
+            model.load_state_dict(ckpt['model_state_dict'])
+            optimizer.load_state_dict(ckpt['optimizer_state_dict'])
+            if scheduler:
+                scheduler.load_state_dict(ckpt['scheduler_state_dict'])
+            epoch = ckpt['epoch'] + 1
+            print('loaded weights')
+    else:
+        os.makedirs(run_save_dir, exist_ok=True)
+        run = wandb.init(
+            entity=cfg.wandb.entity,
+            project=cfg.wandb.project,
+            name=cfg.wandb.name,
+            config=OmegaConf.to_object(cfg),
+        )
+        cfg.wandb.id = run.id
+        OmegaConf.save(cfg, cfg_save_path)
+    return epoch, run
