@@ -11,7 +11,7 @@ def setup(font_dir='/content/drive/MyDrive/sst/Avenir'):
 
 
 def plot_model_data(data, i=None, save_name='test.png'):
-    i = i or np.random.randint(0, data.data['target_sst'].shape[0])
+    i = i if i is not None else np.random.randint(0, data.data['target_sst'].shape[0])
     plot_data = {
         k: data.get(k, array_type='numpy')[i, 0]
         # k: data.data[k].detach().numpy()[i, 0]

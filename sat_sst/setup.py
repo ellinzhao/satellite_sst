@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 
 import sat_sst.dataset
 import sat_sst.loss
-from sat_sst.datatypes import ModelData
+from sat_sst.datatypes import AnomalyData, ModelData
 from sat_sst.model import ReconModel
 from sat_sst.transform import get_scaling_tforms
 
@@ -61,7 +61,8 @@ def setup_data(cfg):
 
     train_loader = _get_dataloader(cfg.train, var, sst_dir, cloud_dir, transform, 'train')
     val_loader = _get_dataloader(cfg.val, var, sst_dir, cloud_dir, transform, 'val')
-    wrapper_cls = lambda data: ModelData(var, data=data, inv_tform=unscale_tform)
+    data_cls = ModelData if var == 'sst' else AnomalyData
+    wrapper_cls = lambda data: data_cls(var, data=data, inv_tform=unscale_tform)
     return train_loader, val_loader, wrapper_cls
 
 

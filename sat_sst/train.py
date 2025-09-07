@@ -75,13 +75,16 @@ def evaluate_dataset(loader, model, device, use_loc, loss_fn, wrapper_cls, plot=
     model.eval()
     use_triplet = False  # the triplet configuration is not needed for eval
     test_loss = 0.
+    plot_batch_i = len(loader) // 2
     with torch.no_grad():
         for i, data in enumerate(loader):
             out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
             loss = loss_fn(out)
             test_loss += loss.item()
+            if i == plot_batch_i:
+                plot_data = out
     test_loss /= len(loader)
     if plot:
         assert plot_fname is not None
-        plot_model_data(out, i=0, save_name=plot_fname)
+        plot_model_data(plot_data, i=0, save_name=plot_fname)
     return test_loss

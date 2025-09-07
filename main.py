@@ -14,7 +14,7 @@ model, optim, scheduler, loss, start_epoch, run = run_components[5:]
 print(start_epoch)
 
 for epoch in range(start_epoch, cfg.epochs):
-    train_loss = train_epoch(train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls)
+    train_loss = train_epoch(train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls, scheduler=scheduler)
 
     plot_fname = os.path.join(cfg.save_dir, cfg.wandb.name, f'epoch_{epoch}.png')
     val_loss = evaluate_dataset(
