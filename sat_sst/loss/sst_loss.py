@@ -47,10 +47,12 @@ class GradWeightedLoss(nn.Module):
         spatial_weights = spatial_weights**0.3
         spatial_weights += 1e-6
         spatial_weights /= spatial_weights.max()
+
+        known_mask = ~torch.isnan(target)
+        target = torch.nan_to_num(target)
         sst_loss = self.l1(
-            pred * spatial_weights,
-            target * spatial_weights,
-            # mask=data.get('target_mask'),
+            (pred * spatial_weights)[known_mask],
+            (target * spatial_weights)[known_mask],
         )
         return sst_loss
 
