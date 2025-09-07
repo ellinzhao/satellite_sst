@@ -68,5 +68,9 @@ class PredMaskReconLoss(nn.Module):
         target = data.get('target_sst')
         pred_mask = data.get('pred_mask').argmax(axis=1).unsqueeze(1)
 
+        known_mask = ~torch.isnan(target)
+        # Sometimes nans still propogate even after maskings
+        target = torch.nan_to_num(target)
+
         combined_pred = pred_mask * pred + input * (~pred_mask)
-        return self.l1(combined_pred, target)
+        return self.l1(target[known_mask], combined_pred[known_mask])
