@@ -63,5 +63,6 @@ class AnomalyData(ModelData):
 
     def _transform(self, key, x, **kwargs):
         x = super()._transform(key, x, **kwargs)
-        x = x + kwargs['fnd_sst']
+        if '_sst' in key and 'z_' not in key:
+            x += self.data['fnd_sst']
         return x
