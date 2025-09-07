@@ -3,16 +3,17 @@ seed: 3
 
 sst_dir: "/tmp/sst"
 cloud_dir: "/tmp/cloud"
-fnd_sst_path: "mur25_2012_foundation.nc"
+fnd_sst_path: "/content/mur25_2012_foundation.nc"
 save_dir: "/content/drive/MyDrive/sst/runs"
 
-epochs: 6
-save_epoch: 2
+epochs: 10
+save_epoch: 5
+val_epoch: 2
 
 wandb:
   entity: ellinzh
   project: sat_sst
-  name: default_colab
+  name: colab_ssta
 
 var: ssta
 use_triplet: false
@@ -26,7 +27,7 @@ model:
 
 optim:
   name: Adam
-  lr: 0.0001
+  lr: 0.005
 
 scheduler:
   name: CosineAnnealingLR
@@ -44,7 +45,7 @@ train:
     cloud_ratio_range: [0.4, 0.8]
   loader:
     batch_size: 32
-    pin_memory: true
+    pin_memory: false
     num_workers: 2
     prefetch_factor: 6
     shuffle: true
@@ -60,7 +61,7 @@ val:
     cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
   loader:
     batch_size: 32
-    pin_memory: true
+    pin_memory: false
     num_workers: 2
     prefetch_factor: 6
     shuffle: false
@@ -71,4 +72,7 @@ loss:
     weight: 1
   mask_loss:
     name: MaskBCELoss
+    weight: 0.1
+  ssim_loss:
+    name: SSIMLoss
     weight: 0.1

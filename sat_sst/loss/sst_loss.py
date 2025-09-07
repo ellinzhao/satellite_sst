@@ -66,7 +66,7 @@ class PredMaskReconLoss(nn.Module):
         pred = data.get('pred_sst')
         input = data.get('input_sst')
         target = data.get('target_sst')
-        pred_mask = data.get('pred_mask').argmax(axis=1)
+        pred_mask = data.get('pred_mask').argmax(axis=1).unsqueeze(1)
 
         combined_pred = pred_mask * pred + input * (~pred_mask)
         return self.l1(combined_pred, target)
