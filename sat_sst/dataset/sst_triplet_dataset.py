@@ -43,7 +43,7 @@ class SSTTripletDataset(SSTDataset):
             neg_sst_idx.append(far_df.sample(n=K).index.to_numpy())
         neg_sst_idx = np.concat(neg_sst_idx)
 
-        cols = ['ir', 'lat_start', 'lon_start']
+        cols = ['ir', 'lat_start', 'lon_start', 'lat_end', 'lon_end']
         multiindex = pd.MultiIndex.from_product([['sst1', 'sst2', 'cloud1', 'cloud2'], cols])
         sst1 = self.df
         sst2 = self.sst_df.iloc[neg_sst_idx].set_index(idx)
@@ -54,6 +54,8 @@ class SSTTripletDataset(SSTDataset):
         for df in (cloud1, cloud2):
             df['lat_start'] = [np.nan] * len(df)
             df['lon_start'] = [np.nan] * len(df)
+            df['lat_end'] = [np.nan] * len(df)
+            df['lon_end'] = [np.nan] * len(df)
         triplet_df = pd.concat(
             [df_[cols] for df_ in (sst1, sst2, cloud1, cloud2)], axis=1
         )
@@ -63,10 +65,10 @@ class SSTTripletDataset(SSTDataset):
     def _get_triplet_row(self, sst, cloud, row):
         # sst is one of ['sst1', 'sst2'] i.e. the positive and negative labels
         ks = [
-            (sst, 'ir'), (cloud, 'ir'), (sst, 'lat_start'), (sst, 'lon_start')
+            (sst, 'ir'), (cloud, 'ir'), (sst, 'lat_start'), (sst, 'lon_start'), (sst, 'lat_end'), (sst, 'lon_end')
         ]
         # These are the columns that the parent class expects to receive
-        new_cols = ['ir', 'cloud', 'lat_start', 'lon_start']
+        new_cols = ['ir', 'cloud', 'lat_start', 'lon_start', 'lat_end', 'lon_end']
         row = row.loc[ks]
         row.index = new_cols
         return row

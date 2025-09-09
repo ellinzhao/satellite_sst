@@ -23,7 +23,7 @@ def process_batch(data, model, use_loc, use_triplet, device, wrapper_cls):
 
 
 def train_epoch(
-    loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls, scheduler=None,
+    loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls, scheduler=None, **kwargs,
 ):
     model.train()
     use_triplet = False
@@ -44,30 +44,35 @@ def train_epoch(
     return epoch_loss / len(loader)
 
 
-def train_triplet_epoch(loader, model, optimizer, device, use_loc, loss_fn, triplet_loss_fn):
+def train_triplet_epoch(
+    loader, model, optimizer, device, use_loc, loss_fn, wrapper_cls, scheduler=None, triplet_loss_fn=None,
+):
+    model.train()
     use_triplet = True
     epoch_loss = 0.
-    for _, triplet_data in enumerate(loader):
+    pbar = tqdm(loader)
+    for i, triplet_data in enumerate(pbar):
+        out = None  # prevent memory leak
         optimizer.zero_grad()
         feats = {}
-        recon_loss = 0
-        mask_recon_loss = 0
-
         for k, data in triplet_data.items():
-            out = process_batch(data, model, use_loc, use_triplet, device)
+            out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
             loss = loss_fn(out)
-            feats[k] = (out['z'], out['z_mask'])
+            feats[k] = {'sst': out.get('z_sst'), 'mask': out.get('z_mask')}
 
-        sstA, sstP, sstN = [feats[k][0] for k in ('x1_m1', 'x1_m2', 'x2_m1')]
-        trip_sst_loss = triplet_loss_fn(sstA, sstP, sstN)
+        sstA, sstP, sstN = [feats[k]['sst'] for k in ('x1_m1', 'x1_m2', 'x2_m1')]
+        loss += triplet_loss_fn(sstA, sstP, sstN)
 
-        maskA, maskP, maskN = [feats[k][0] for k in ('x1_m1', 'x2_m1', 'x1_m2')]
-        trip_mask_loss = triplet_loss_fn(maskA, maskP, maskN)
-        loss = recon_loss + 0.25 * mask_recon_loss + trip_sst_loss + trip_mask_loss
+        # maskA, maskP, maskN = [feats[k]['mask'] for k in ('x1_m1', 'x2_m1', 'x1_m2')]
+        # loss += triplet_loss_fn(maskA, maskP, maskN)
+        # # mask reconstruction converges quickly - triplet loss not needed?
 
         loss.backward()
         optimizer.step()
         epoch_loss += loss.item()
+    pbar.close()
+    if scheduler:
+        scheduler.step()
     return epoch_loss / len(loader)
 
 

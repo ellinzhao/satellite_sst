@@ -3,6 +3,7 @@ import os
 
 import numpy as np
 import torch
+import torch.nn as nn
 import torch.optim
 import wandb
 from omegaconf import OmegaConf
@@ -35,11 +36,11 @@ def load_components(fname):
     device = torch.device(cfg.device)
     train_loader, val_loader, wrapper_cls = setup_data(cfg)
     model, optim, scheduler = setup_model_optim(cfg, device)
-    loss = setup_loss(cfg)
+    loss, triplet_loss = setup_loss(cfg)
     start_epoch, run = load_training_state(cfg, model, optim, scheduler)
     return (
         cfg, device, train_loader, val_loader, wrapper_cls,
-        model, optim, scheduler, loss, start_epoch, run,
+        model, optim, scheduler, loss, triplet_loss, start_epoch, run,
     )
 
 
@@ -63,6 +64,9 @@ def setup_data(cfg):
     val_loader = _get_dataloader(cfg.val, var, sst_dir, cloud_dir, transform, 'val')
     data_cls = ModelData if var == 'sst' else AnomalyData
     wrapper_cls = lambda data: data_cls(var, data=data, inv_tform=unscale_tform)
+
+    if cfg.train.name == 'TripletSSTDataset':
+        assert cfg.triplet_loss is not None
     return train_loader, val_loader, wrapper_cls
 
 
@@ -89,7 +93,12 @@ def setup_loss(cfg, debug=False):
         loss = loss_cls()
         losses.append(loss)
         weights.append(loss_cfg.weight)
-    return sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
+    loss_fn = sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
+
+    if cfg.triplet_loss:
+        trip_loss_fn = nn.TripletMarginLoss(**cfg.triplet_loss.get('kwargs', {}))
+        weighted_trip_loss_fn = lambda a, p, n: cfg.triplet_loss.weight * trip_loss_fn(a, p, n)
+    return loss_fn, weighted_trip_loss_fn
 
 
 def save_checkpoint(cfg, epoch, model, optimizer, scheduler):

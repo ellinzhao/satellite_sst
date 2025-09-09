@@ -4,18 +4,21 @@ import matplotlib.pyplot as plt
 import wandb
 
 from sat_sst.setup import load_components, save_checkpoint
-from sat_sst.train import train_epoch, evaluate_dataset
+from sat_sst.train import train_epoch, train_triplet_epoch, evaluate_dataset
 
 
-run_components = load_components('default.yaml')
+run_components = load_components('triplet.yaml')
 cfg, device, train_loader, val_loader, wrapper_cls = run_components[:5]
-model, optim, scheduler, loss, start_epoch, run = run_components[5:]
+model, optim, scheduler, loss, triplet_loss, start_epoch, run = run_components[5:]
 
 print(start_epoch)
+train_epoch_fn = train_epoch if not cfg.use_triplet else train_triplet_epoch
 
 for epoch in range(start_epoch, cfg.epochs):
-    train_loss = train_epoch(train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls, scheduler=scheduler)
-
+    train_loss = train_epoch_fn(
+        train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls,
+        scheduler=scheduler, triplet_loss_fn=triplet_loss,
+    )
     plot_fname = os.path.join(cfg.save_dir, cfg.wandb.name, f'epoch_{epoch}.png')
     val_loss = evaluate_dataset(
         val_loader, model, device, cfg.use_loc, loss, wrapper_cls,
