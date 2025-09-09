@@ -10,9 +10,9 @@ from .plotting import plot_model_data
 from .setup import save_checkpoint
 
 
-def set_resnet_training(model, freeze: bool = True):
+def set_resnet_training(model, train: bool = True):
     for param in model.enc.down_blocks.parameters():
-        param.requires_grad = freeze
+        param.requires_grad = train
 
 
 def get_loc_emb(data, device, satclip_model):
