@@ -102,6 +102,7 @@ def setup_loss(cfg, debug=False):
         weights.append(loss_cfg.weight)
     loss_fn = sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
 
+    weighted_trip_loss_fn = lambda a, p, n: 0
     if cfg.triplet_loss:
         trip_loss_fn = nn.TripletMarginLoss(**cfg.triplet_loss.get('kwargs', {}))
         weighted_trip_loss_fn = lambda a, p, n: cfg.triplet_loss.weight * trip_loss_fn(a, p, n)
