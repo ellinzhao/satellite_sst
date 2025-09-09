@@ -1,35 +1,19 @@
-import os
-
-import matplotlib.pyplot as plt
 import wandb
 
-from sat_sst.setup import load_components, save_checkpoint
-from sat_sst.train import train_epoch, train_triplet_epoch, evaluate_dataset
+from sat_sst.setup import load_components
+from sat_sst.train import set_resnet_training, train_and_eval_epoch
 
 
-run_components = load_components('triplet.yaml')
-cfg, device, train_loader, val_loader, wrapper_cls = run_components[:5]
-model, optim, scheduler, loss, triplet_loss, start_epoch, run = run_components[5:]
+cfg_path = 'triplet.yaml'
+components = load_components(cfg_path)
+start_epoch, end_epoch = components['start_epoch'], components['end_epoch']
+model = components['model']
 
-print(start_epoch)
-train_epoch_fn = train_epoch if not cfg.use_triplet else train_triplet_epoch
+set_resnet_training(model, freeze=True)
 
-for epoch in range(start_epoch, cfg.epochs):
-    train_loss = train_epoch_fn(
-        train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls,
-        scheduler=scheduler, triplet_loss_fn=triplet_loss,
-    )
-    plot_fname = os.path.join(cfg.save_dir, cfg.wandb.name, f'epoch_{epoch}.png')
-    val_loss = evaluate_dataset(
-        val_loader, model, device, cfg.use_loc, loss, wrapper_cls,
-        plot=True, plot_fname=plot_fname,
-    )
-    if epoch > 0 and epoch % cfg.save_epoch == 0:
-        save_checkpoint(cfg, epoch, model, optim, scheduler)
-    run.log({
-        'train_loss': train_loss,
-        'val_loss': val_loss,
-        'val': [wandb.Image(plt.imread(plot_fname), caption='')],
-    }, step=epoch)
+for epoch in range(start_epoch, end_epoch):
+    if epoch > 10:
+        set_resnet_training(model, freeze=False)
+    train_and_eval_epoch(components, epoch=epoch)
 
 wandb.finish()

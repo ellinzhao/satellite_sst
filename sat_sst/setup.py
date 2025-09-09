@@ -38,10 +38,17 @@ def load_components(fname):
     model, optim, scheduler = setup_model_optim(cfg, device)
     loss, triplet_loss = setup_loss(cfg)
     start_epoch, run = load_training_state(cfg, model, optim, scheduler)
-    return (
-        cfg, device, train_loader, val_loader, wrapper_cls,
-        model, optim, scheduler, loss, triplet_loss, start_epoch, run,
-    )
+    return {
+        'cfg': cfg,
+        'device': device,
+        'model': model,
+        'run': run,
+        'start_epoch': start_epoch,
+        'end_epoch': cfg.epochs,
+        'data': [train_loader, val_loader, wrapper_cls],
+        'loss': [loss, triplet_loss],
+        'train_params': [optim, scheduler],
+    }
 
 
 def set_seed(i):
@@ -111,7 +118,7 @@ def save_checkpoint(cfg, epoch, model, optimizer, scheduler):
         state['scheduler_state_dict'] = scheduler.state_dict()
     save_path = os.path.join(cfg.save_dir, cfg.wandb.name, 'training_ckpt.tar')
     torch.save(state, save_path)
-    print('saved to ', save_path)
+    print('Saved checkpoint to', save_path)
 
 
 def check_cfg_match(cfg1, cfg2):
@@ -131,6 +138,7 @@ def load_training_state(cfg, model, optimizer, scheduler):
     cfg_save_path = os.path.join(run_save_dir, 'config.yaml')
     epoch = 0
     if os.path.isdir(run_save_dir) and os.path.isfile(cfg_save_path):
+        print('Found previous run...')
         saved_cfg = OmegaConf.load(cfg_save_path)
         assert check_cfg_match(cfg, saved_cfg)
         run_id = saved_cfg.wandb.id
@@ -145,7 +153,7 @@ def load_training_state(cfg, model, optimizer, scheduler):
             if scheduler:
                 scheduler.load_state_dict(ckpt['scheduler_state_dict'])
             epoch = ckpt['epoch'] + 1
-            print('loaded weights')
+            print('Loaded previous training state...')
     else:
         os.makedirs(run_save_dir, exist_ok=True)
         run = wandb.init(
