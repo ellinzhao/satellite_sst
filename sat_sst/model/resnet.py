@@ -14,6 +14,10 @@ class ConvBlock(nn.Module):
         self.bn = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU()
         self.with_nonlinearity = with_nonlinearity
+        nn.init.kaiming_normal_(self.conv.weight, a=0, mode='fan_in')
+        nn.init.constant_(self.conv.bias, 0.0)
+        nn.init.normal_(self.bn.weight, 1.0, 0.02)
+        nn.init.constant_(self.bn.bias, 0.0)
 
     def forward(self, x):
         x = self.conv(x)
@@ -60,8 +64,8 @@ class Resnet50Encoder(nn.Module):
         resnet = torch.hub.load('pytorch/vision', 'resnet50', weights='IMAGENET1K_V2')
         resnet_children = list(resnet.children())
 
-        self.input_block = ConvBlock(in_ch, 64)
-        self.mask_token = nn.Parameter(mask_token_init_fn(64)[None, :, None, None])
+        self.input_block = ConvBlock(in_ch, self.CHS[0])
+        self.mask_token = nn.Parameter(mask_token_init_fn(self.CHS[0])[None, :, None, None])
         self.input_pool = resnet_children[3]  # TODO(ellin): check if perf is worse without this
         # if this pool op is removed, add a pool op before the final conv
 
@@ -112,8 +116,8 @@ class ReconModel(nn.Module):
 
     def __init__(self, n_enc_layers=3, dec_data_chs=[384, 256, 64], dec_mask_chs=[128, 64, 32]):
         super().__init__()
-        # TODO: use_mask should be true!!
-        self.enc = Resnet50Encoder(1, n_enc_layers, use_mask=True)  # can't change the chs of the resnet [64, 256, 512, 1024, 2048]
+        self.enc = Resnet50Encoder(1, n_enc_layers, use_mask=True)
+        # can't change the chs of the resnet [64, 256, 512, 1024, 2048]
 
         self.enc_feat_dim = self.enc.chs[-1]
         self.data_feat_dim = dec_data_chs[0]
