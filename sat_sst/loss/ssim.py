@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 from pytorch_msssim import SSIM
 
+from ..util import gradient
+
 
 def batch_masked_mean(x, mask=1, keep_dim=True):
     mean = torch.sum(x * mask, dim=(1, 2, 3), keepdim=True) / torch.sum(mask, dim=(1, 2, 3), keepdim=True)
@@ -19,6 +21,9 @@ class SSIMLoss(nn.Module):
             channel=1, nonnegative_ssim=True,
         )
 
+    def _preprocess(self, x):
+        return x
+
     def _unnormalize(self, x):
         # Unstandardize the data and map to range [0, 1]
         b = x.shape[0]
@@ -31,14 +36,29 @@ class SSIMLoss(nn.Module):
     def forward(self, data):
         pred = data.get('pred_sst')
         target = data.get('target_sst')
-        mask = torch.isnan(pred) | torch.isnan(target)
-        mask = mask.float()
-        target = torch.nan_to_num(target)
-        pred = torch.nan_to_num(pred)
 
-        target_mean = batch_masked_mean(target, mask, keep_dim=True)
+        pred = self._preprocess(pred)
+        target = self._preprocess(target)
+
+        pred = torch.nan_to_num(pred)
+        target = torch.nan_to_num(target)
+
+        mask = torch.isnan(pred) | torch.isnan(target)
+        valid_mask = ~mask
+
+        target_mean = batch_masked_mean(target, valid_mask.float(), keep_dim=True)
         mask = mask.bool()
 
         target = torch.where(mask, target_mean, target)
         pred = torch.where(mask, target_mean, pred)
-        return 1 - self.ssim_module(self._unnormalize(pred), self._unnormalize(target))
+
+        target = self._unnormalize(target)
+        pred = self._unnormalize(pred)
+        return 1 - self.ssim_module(pred, target)
+
+
+class GradientSSIMLoss(SSIMLoss):
+
+    def _preprocess(self, x):
+
+        return gradient(x)
