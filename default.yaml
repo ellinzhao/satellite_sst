@@ -6,23 +6,25 @@ cloud_dir: "/Users/ellin/data/cloud"
 fnd_sst_path: "/Users/ellin/data/mur25_2012_foundation.nc"
 save_dir: "/Users/ellin/sat_sst_saves"
 
-epochs: 6
-save_epoch: 2
+epochs: 10
+save_epoch: 5
+val_epoch: 1
 
 wandb:
   entity: ellinzh
   project: sat_sst
-  name: default
+  name: test_pretrained_0911_1047
 
+pretrained_weights_path: /Users/ellin/Downloads/vanilla_4layers_0910_1240/training_ckpt.tar
 var: ssta
 use_triplet: false
 use_loc: false
 
 # Model must be the ResNet backbone autoencoder
 model:
-  n_enc_layers: 3
-  dec_data_chs: [384, 256, 64]
-  dec_mask_chs: [128, 64, 32]
+  n_enc_layers: 4
+  dec_data_chs: [896, 512, 128, 64]
+  dec_mask_chs: [128, 96, 64, 32]
 
 optim:
   name: Adam
@@ -65,17 +67,17 @@ val:
 
 loss:
   sst_loss:
-    name: MaskedLoss
+    name: GradWeightedLoss
     weight: 1
-  # ssim_loss:
-  #   name: SSIMLoss
-  #   weight: 5
-  # pred_mask_sst_loss:
-  #   name: PredMaskReconLoss
-  #   weight: 1
-  # grad_weight_loss:
-  #   name: GradWeightedLoss
-  #   weight: 1
+  ssim_loss:
+    name: SSIMLoss
+    weight: 1
   mask_loss:
     name: MaskBCELoss
     weight: 0.1
+
+val_loss:
+  sst_loss:
+    name: MaskedLoss
+  ssim_loss:
+    name: SSIMLoss

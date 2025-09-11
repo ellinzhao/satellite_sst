@@ -90,29 +90,31 @@ def train_triplet_epoch(
     return epoch_loss / len(loader)
 
 
-def evaluate_dataset(loader, model, device, use_loc, loss_fn, wrapper_cls, plot=True, plot_fname=None):
+def evaluate_dataset(loader, model, device, use_loc, loss_fns, wrapper_cls, plot=True, plot_fname=None):
     model.eval()
     use_triplet = False  # the triplet configuration is not needed for eval
-    test_loss = 0.
     plot_batch_i = len(loader) // 2
+    losses = {k: 0. for k in loss_fns}
+    plot_data = None
     with torch.no_grad():
         for i, data in enumerate(loader):
             out = process_batch(data, model, use_loc, use_triplet, device, wrapper_cls)
-            loss = loss_fn(out)
-            test_loss += loss.item()
+            for loss_name, loss_fn in loss_fns.items():
+                loss = loss_fn(out)
+                losses[loss_name] = losses[loss_name] + loss.item()
             if i == plot_batch_i:
                 plot_data = out
-    test_loss /= len(loader)
-    if plot:
+    losses = {k: v / len(loader) for k, v in losses.items()}
+    if plot and plot_data:
         assert plot_fname is not None
         plot_model_data(plot_data, i=0, save_name=plot_fname)
-    return test_loss
+    return losses
 
 
 def train_and_eval_epoch(comp, epoch):
     cfg, device, model, run = [comp[k] for k in ('cfg', 'device', 'model', 'run')]
     train_loader, val_loader, wrapper_cls = comp['data']
-    loss, triplet_loss = comp['loss']
+    loss, triplet_loss, val_losses = comp['loss']
     optim, scheduler = comp['train_params']
     end_epoch = comp['end_epoch']
 
@@ -132,10 +134,12 @@ def train_and_eval_epoch(comp, epoch):
         save_checkpoint(cfg, epoch, model, optim, scheduler)
     if epoch % cfg.val_epoch == 0:
         plot_fname = os.path.join(cfg.save_dir, cfg.wandb.name, f'epoch_{epoch}.png')
-        val_loss = evaluate_dataset(
-            val_loader, model, device, cfg.use_loc, loss, wrapper_cls,
+        val_loss_values = evaluate_dataset(
+            val_loader, model, device, cfg.use_loc, val_losses, wrapper_cls,
             plot=True, plot_fname=plot_fname,
         )
-        log['val_loss'] = val_loss
-        log['val_recon'] = [wandb.Image(plt.imread(plot_fname), caption='')]
+        val_loss_values = {f'val_{k}': v for k, v in val_loss_values.items()}
+        log = log | val_loss_values
+        if os.path.isfile(plot_fname):
+            log['val_recon'] = [wandb.Image(plt.imread(plot_fname), caption='')]
     run.log(log, step=epoch)

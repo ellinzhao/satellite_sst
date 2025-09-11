@@ -36,7 +36,7 @@ def load_components(fname):
     device = torch.device(cfg.device)
     train_loader, val_loader, wrapper_cls = setup_data(cfg)
     model, optim, scheduler = setup_model_optim(cfg, device)
-    loss, triplet_loss = setup_loss(cfg)
+    loss, triplet_loss, val_losses = setup_loss(cfg)
     start_epoch, run = load_training_state(cfg, model, optim, scheduler)
     return {
         'cfg': cfg,
@@ -46,7 +46,7 @@ def load_components(fname):
         'start_epoch': start_epoch,
         'end_epoch': cfg.epochs,
         'data': [train_loader, val_loader, wrapper_cls],
-        'loss': [loss, triplet_loss],
+        'loss': [loss, triplet_loss, val_losses],
         'train_params': [optim, scheduler],
     }
 
@@ -102,11 +102,18 @@ def setup_loss(cfg, debug=False):
         weights.append(loss_cfg.weight)
     loss_fn = sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
 
+    val_loss_fns = {}
+    val_loss_names = cfg.val_loss
+    for loss_name in val_loss_names:
+        loss_cfg = cfg.loss[loss_name]
+        loss_cls = getattr(sat_sst.loss, loss_cfg.name)
+        val_loss_fns[loss_name] = loss_cls()
+
     weighted_trip_loss_fn = lambda a, p, n: 0
-    if cfg.triplet_loss:
+    if cfg.get('triplet_loss', None):
         trip_loss_fn = nn.TripletMarginLoss(**cfg.triplet_loss.get('kwargs', {}))
         weighted_trip_loss_fn = lambda a, p, n: cfg.triplet_loss.weight * trip_loss_fn(a, p, n)
-    return loss_fn, weighted_trip_loss_fn
+    return loss_fn, weighted_trip_loss_fn, val_loss_fns
 
 
 def save_checkpoint(cfg, epoch, model, optimizer, scheduler):
@@ -122,9 +129,11 @@ def save_checkpoint(cfg, epoch, model, optimizer, scheduler):
     print('Saved checkpoint to', save_path)
 
 
-def check_cfg_match(cfg1, cfg2):
+def check_cfg_match(cfg1, cfg2, model_only=False):
     cfg1 = OmegaConf.to_object(cfg1)
     cfg2 = OmegaConf.to_object(cfg2)
+    if model_only:
+        return cfg1.model == cfg2.model
     cfg_wandb1 = cfg1.pop('wandb', {})
     cfg_wandb2 = cfg2.pop('wandb', {})
     id1 = cfg_wandb1.pop('id', None)
@@ -137,8 +146,19 @@ def check_cfg_match(cfg1, cfg2):
 def load_training_state(cfg, model, optimizer, scheduler):
     run_save_dir = os.path.join(cfg.save_dir, cfg.wandb.name)
     cfg_save_path = os.path.join(run_save_dir, 'config.yaml')
+    pretrained_path = cfg.get('pretrained_weights_path', None)
     epoch = 0
-    if os.path.isdir(run_save_dir) and os.path.isfile(cfg_save_path):
+    if pretrained_path:
+        assert pretrained_path.endswith('.tar')
+        assert os.path.isfile(pretrained_path)
+        try:
+            ckpt = torch.load(pretrained_path, weights_only=True)
+        except RuntimeError:
+            ckpt = torch.load(pretrained_path, weights_only=True, map_location=torch.device('cpu'))
+        model.load_state_dict(ckpt['model_state_dict'])
+        print('Loaded pretrained model weights...')
+
+    if not pretrained_path and os.path.isdir(run_save_dir) and os.path.isfile(cfg_save_path):
         print('Found previous run...')
         saved_cfg = OmegaConf.load(cfg_save_path)
         assert check_cfg_match(cfg, saved_cfg)
