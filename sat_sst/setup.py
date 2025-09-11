@@ -105,7 +105,7 @@ def setup_loss(cfg, debug=False):
     val_loss_fns = {}
     val_loss_names = cfg.val_loss
     for loss_name in val_loss_names:
-        loss_cfg = cfg.loss[loss_name]
+        loss_cfg = cfg.val_loss[loss_name]
         loss_cls = getattr(sat_sst.loss, loss_cfg.name)
         val_loss_fns[loss_name] = loss_cls()
 
