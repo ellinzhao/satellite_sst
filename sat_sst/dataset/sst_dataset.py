@@ -187,6 +187,9 @@ class SSTDataset(Dataset):
         }
         da = self.fnd_sst.sel(bounds)
         da = torch.from_numpy(da.values)
+        nan_mask = da.isnan()
+        tile_mean = da[~nan_mask].sum() / (~nan_mask).sum()
+        da = torch.where(da.isnan(), tile_mean, da)
         da = da[:112, :112]
         return da
 
