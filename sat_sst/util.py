@@ -10,10 +10,11 @@ def add_channel_dim(x):
 
 
 def center_crop(mask, n):
-    mask[:n] = False
-    mask[-n:] = False
-    mask[:, :n] = False
-    mask[:, -n:] = False
+    mask[:, :, :n] = False
+    mask[:, :, -n:] = False
+    mask[:, :, :, :n] = False
+    mask[:, :, :, -n:] = False
+    return mask
 
 
 def gradient(x, axis=(-2, -1)):

@@ -1,0 +1,50 @@
+base_files:
+# - /content/drive/MyDrive/sst/config/base_colab.yaml
+- config/default.yaml
+
+use_triplet: false
+
+wandb:
+  name: vanilla_center_crop_0930_1314
+
+epochs: 100
+save_epoch: 5
+val_epoch: 2
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  args:
+    - 10
+  kwargs:
+    # T_mult: 3
+    eta_min: 0.0001
+
+train:
+  kwargs:
+    K: 3
+
+n_crop: 10
+loss:
+  sst_loss:
+    name: MaskedLoss
+    kwargs:
+      n_crop: ${n_crop}
+    weight: 1
+  ssim_loss:
+    name: GradientSSIMLoss
+    kwargs:
+      n_crop: ${n_crop}
+    weight: 1
+  mask_loss:
+    name: MaskBCELoss
+    weight: 0.1
+
+val_loss:
+  sst_loss:
+    name: MaskedLoss
+    kwargs:
+      n_crop: ${n_crop}
+  ssim_loss:
+    name: SSIMLoss
+    kwargs:
+      n_crop: ${n_crop}

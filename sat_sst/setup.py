@@ -97,7 +97,8 @@ def setup_loss(cfg, debug=False):
     for loss_name in loss_names:
         loss_cfg = cfg.loss[loss_name]
         loss_cls = getattr(sat_sst.loss, loss_cfg.name)
-        loss = loss_cls()
+        loss_kwargs = loss_cfg.get('kwargs', {})
+        loss = loss_cls(**loss_kwargs)
         losses.append(loss)
         weights.append(loss_cfg.weight)
     loss_fn = sat_sst.loss.CombinedLoss(losses, weights, debug=debug)
