@@ -77,9 +77,8 @@ def train_triplet_epoch(
         sstA, sstP, sstN = [feats[k]['sst'] for k in ('x1_m1', 'x1_m2', 'x2_m1')]
         loss += triplet_loss_fn(sstA, sstP, sstN)
 
-        # maskA, maskP, maskN = [feats[k]['mask'] for k in ('x1_m1', 'x2_m1', 'x1_m2')]
-        # loss += triplet_loss_fn(maskA, maskP, maskN)
-        # # mask reconstruction converges quickly - triplet loss not needed?
+        maskA, maskP, maskN = [feats[k]['mask'] for k in ('x1_m1', 'x2_m1', 'x1_m2')]
+        loss += triplet_loss_fn(maskA, maskP, maskN)
 
         loss.backward()
         optimizer.step()
