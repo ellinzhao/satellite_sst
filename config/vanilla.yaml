@@ -1,0 +1,11 @@
+base_files:
+- /content/drive/MyDrive/sst/config/base_colab.yaml
+
+use_triplet: false
+
+wandb:
+  name: vanilla_0909_0552
+
+train:
+  kwargs:
+    K: 3

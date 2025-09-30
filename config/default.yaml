@@ -6,16 +6,16 @@ cloud_dir: "/Users/ellin/data/cloud"
 fnd_sst_path: "/Users/ellin/data/mur25_2012_foundation.nc"
 save_dir: "/Users/ellin/sat_sst_saves"
 
-epochs: 10
+epochs: 40
 save_epoch: 5
-val_epoch: 1
+val_epoch: 2
 
 wandb:
   entity: ellinzh
   project: sat_sst
-  name: test_pretrained_0911_1047
+  name: test_0929_1654
 
-pretrained_weights_path: /Users/ellin/Downloads/vanilla_4layers_0910_1240/training_ckpt.tar
+# pretrained_weights_path: /Users/ellin/Downloads/vanilla_4layers_0910_1240/training_ckpt.tar
 var: ssta
 use_triplet: false
 use_loc: false
@@ -28,13 +28,15 @@ model:
 
 optim:
   name: Adam
-  lr: 0.0001
+  lr: 0.01
 
 scheduler:
-  name: CosineAnnealingLR
+  name: CosineAnnealingWarmRestarts
   args:
-    - ${epochs}
+    - 10
   kwargs:
+    T_mult: 3
+    eta_min: 0.0001
 
 train:
   name: SSTDataset
@@ -45,7 +47,7 @@ train:
     fnd_sst_path: ${fnd_sst_path}
     cloud_ratio_range: [0.4, 0.8]
   loader:
-    batch_size: 32
+    batch_size: 64
     pin_memory: false
     num_workers: 0
     shuffle: true
@@ -60,17 +62,21 @@ val:
     fnd_sst_path: ${fnd_sst_path}
     cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
   loader:
-    batch_size: 32
+    batch_size: 64
     pin_memory: false
     num_workers: 0
     shuffle: false
 
 loss:
   sst_loss:
-    name: GradWeightedLoss
+    name: MaskedLoss
+    kwargs:
+      n_crop: 10
     weight: 1
   ssim_loss:
-    name: SSIMLoss
+    name: GradientSSIMLoss
+    kwargs:
+      n_crop: 10
     weight: 1
   mask_loss:
     name: MaskBCELoss

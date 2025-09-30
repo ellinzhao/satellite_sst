@@ -1,0 +1,49 @@
+base_files:
+- /content/drive/MyDrive/sst/config/base_colab.yaml
+
+pretrained_weights_path: /content/drive/MyDrive/sst/runs/vanilla_4layers_0910_1240/training_ckpt.tar
+
+use_triplet: true
+
+epochs: 30
+save_epoch: 5
+val_epoch: 3
+
+wandb:
+  name: triplet_refinement_0911_1735
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  args:
+    - 30
+  kwargs:
+    eta_min: 0.0001
+
+train:
+  name: SSTTripletDataset
+  kwargs:
+    K: 1
+  loader:
+    batch_size: 32
+
+loss:
+  sst_loss:
+    name: MaskedLoss
+    weight: 1
+  grad_ssim_loss:
+    name: GradientSSIMLoss
+    weight: 1
+  mask_loss:
+    name: MaskBCELoss
+    weight: 0.05
+
+val_loss:
+  sst_loss:
+    name: MaskedLoss
+  ssim_loss:
+    name: SSIMLoss
+  grad_ssim_loss:
+    name: GradientSSIMLoss
+
+triplet_loss:
+  weight: 0.1

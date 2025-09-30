@@ -1,0 +1,32 @@
+base_files:
+- /content/drive/MyDrive/sst/config/base_colab.yaml
+
+use_triplet: false
+
+wandb:
+  name: vanilla_0909_0552
+
+epochs: 30
+save_epoch: 3
+val_epoch: 2
+
+optim:
+  name: Adam
+  lr: 0.01
+
+scheduler:
+  name: CosineAnnealingWarmRestarts
+  args:
+    - 10
+  kwargs:
+    T_mult: 2
+    eta_min: 0.0001
+
+model:
+  n_enc_layers: 4
+  dec_data_chs: [896, 512, 128, 64]
+  dec_mask_chs: [128, 96, 64, 32]
+
+train:
+  kwargs:
+    K: 3

@@ -6,7 +6,7 @@ cloud_dir: "/tmp/cloud"
 fnd_sst_path: "/content/mur25_2012_foundation.nc"
 save_dir: "/content/drive/MyDrive/sst/runs"
 
-epochs: 10
+epochs: 40
 save_epoch: 5
 val_epoch: 2
 
@@ -21,19 +21,21 @@ use_loc: false
 
 # Model must be the ResNet backbone autoencoder
 model:
-  n_enc_layers: 3
-  dec_data_chs: [384, 256, 64]
-  dec_mask_chs: [128, 64, 32]
+  n_enc_layers: 4
+  dec_data_chs: [896, 512, 128, 64]
+  dec_mask_chs: [128, 96, 64, 32]
 
 optim:
   name: Adam
-  lr: 0.005
+  lr: 0.01
 
 scheduler:
-  name: CosineAnnealingLR
+  name: CosineAnnealingWarmRestarts
   args:
-    - ${epochs}
+    - 10
   kwargs:
+    T_mult: 3
+    eta_min: 0.0001
 
 train:
   name: SSTDataset
@@ -44,7 +46,7 @@ train:
     fnd_sst_path: ${fnd_sst_path}
     cloud_ratio_range: [0.4, 0.8]
   loader:
-    batch_size: 32
+    batch_size: 64
     pin_memory: false
     num_workers: 2
     prefetch_factor: 6
@@ -60,7 +62,7 @@ val:
     fnd_sst_path: ${fnd_sst_path}
     cloud_ratio_range: ${train.kwargs.cloud_ratio_range}
   loader:
-    batch_size: 32
+    batch_size: 64
     pin_memory: false
     num_workers: 2
     prefetch_factor: 6
@@ -70,9 +72,15 @@ loss:
   sst_loss:
     name: MaskedLoss
     weight: 1
+  ssim_loss:
+    name: GradientSSIMLoss
+    weight: 1
   mask_loss:
     name: MaskBCELoss
     weight: 0.1
+
+val_loss:
+  sst_loss:
+    name: MaskedLoss
   ssim_loss:
     name: SSIMLoss
-    weight: 0.1

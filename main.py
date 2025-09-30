@@ -4,7 +4,7 @@ from sat_sst.setup import load_components
 from sat_sst.train import set_resnet_training, train_and_eval_epoch
 
 
-cfg_path = 'default.yaml'
+cfg_path = 'config/default.yaml'
 components = load_components(cfg_path)
 start_epoch, end_epoch = components['start_epoch'], components['end_epoch']
 model = components['model']
