@@ -125,7 +125,7 @@ def train_and_eval_epoch(comp, epoch):
 
     train_loss = train_epoch_fn(
         train_loader, model, optim, device, cfg.use_loc, loss, wrapper_cls,
-        scheduler=scheduler, pbar_title=f'{epoch}/{end_epoch}', triplet_loss_fn=triplet_loss,
+        scheduler=scheduler, pbar_title=f'{epoch + 1}/{end_epoch}', triplet_loss_fn=triplet_loss,
     )
     log['train_loss'] = train_loss
 
