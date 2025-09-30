@@ -107,7 +107,8 @@ def setup_loss(cfg, debug=False):
     for loss_name in val_loss_names:
         loss_cfg = cfg.val_loss[loss_name]
         loss_cls = getattr(sat_sst.loss, loss_cfg.name)
-        val_loss_fns[loss_name] = loss_cls()
+        loss_kwargs = loss_cfg.get('kwargs', {})
+        val_loss_fns[loss_name] = loss_cls(**loss_kwargs)
 
     weighted_trip_loss_fn = lambda a, p, n: 0
     if cfg.get('triplet_loss', None):

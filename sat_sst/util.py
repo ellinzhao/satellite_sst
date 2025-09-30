@@ -9,6 +9,13 @@ def add_channel_dim(x):
     return x
 
 
+def center_crop(mask, n):
+    mask[:n] = False
+    mask[-n:] = False
+    mask[:, :n] = False
+    mask[:, -n:] = False
+
+
 def gradient(x, axis=(-2, -1)):
     derivatives = torch.gradient(x, dim=axis)
     sum_squared = sum([deriv**2 for deriv in derivatives])

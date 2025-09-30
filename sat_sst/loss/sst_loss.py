@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from ..util import center_crop
+
 
 def gradient(x, axis=(-2, -1)):
     derivatives = torch.gradient(x, dim=axis)
@@ -10,11 +12,12 @@ def gradient(x, axis=(-2, -1)):
 
 class MaskedLoss(nn.Module):
 
-    def __init__(self, loss_class=nn.L1Loss):
+    def __init__(self, loss_class=nn.L1Loss, n_crop=0):
         super().__init__()
         self.loss = loss_class()
+        self.n_crop = n_crop
 
-    def forward(self, data):
+    def _prepare_data(self, data):
         target = data.get('target_sst')
         pred = data.get('pred_sst')
         mask = data.get('target_mask')
@@ -25,7 +28,12 @@ class MaskedLoss(nn.Module):
 
         # Sometimes nans still propogate even after maskings
         target = torch.nan_to_num(target)
+        if self.n_crop > 0:
+            known_mask = center_crop(known_mask, self.n_crop)
+        return target, pred, known_mask
 
+    def forward(self, data):
+        target, pred, known_mask = self._prepare_data(data)
         return self.loss(target[known_mask], pred[known_mask])
 
     def __str__(self):

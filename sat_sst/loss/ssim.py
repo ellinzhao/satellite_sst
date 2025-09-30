@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from pytorch_msssim import SSIM
 
-from ..util import gradient
+from ..util import center_crop, gradient
 
 
 def batch_masked_mean(x, mask=1, keep_dim=True):
@@ -14,12 +14,13 @@ def batch_masked_mean(x, mask=1, keep_dim=True):
 
 class SSIMLoss(nn.Module):
 
-    def __init__(self):
+    def __init__(self, n_crop=0):
         super().__init__()
         self.ssim_module = SSIM(
             data_range=1., size_average=True,
             channel=1, nonnegative_ssim=True,
         )
+        self.n_crop = n_crop
 
     def _preprocess(self, x):
         return x
@@ -36,6 +37,7 @@ class SSIMLoss(nn.Module):
     def forward(self, data):
         pred = data.get('pred_sst')
         target = data.get('target_sst')
+        mask = data.get('target_mask')
 
         pred = self._preprocess(pred)
         target = self._preprocess(target)
@@ -43,14 +45,15 @@ class SSIMLoss(nn.Module):
         pred = torch.nan_to_num(pred)
         target = torch.nan_to_num(target)
 
-        mask = torch.isnan(pred) | torch.isnan(target)
-        valid_mask = ~mask
+        known_mask = ~torch.isnan(target)
+        if mask is not None:
+            known_mask = known_mask & mask.bool()
+        if self.n_crop > 0:
+            known_mask = center_crop(known_mask, self.n_crop)
 
-        target_mean = batch_masked_mean(target, valid_mask.float(), keep_dim=True)
         mask = mask.bool()
-
-        target = torch.where(mask, target_mean, target)
-        pred = torch.where(mask, target_mean, pred)
+        target = torch.where(known_mask, 0, target)
+        pred = torch.where(known_mask, 0, pred)
 
         target = self._unnormalize(target)
         pred = self._unnormalize(pred)
