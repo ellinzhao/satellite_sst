@@ -45,15 +45,17 @@ class SSIMLoss(nn.Module):
         pred = torch.nan_to_num(pred)
         target = torch.nan_to_num(target)
 
+        valid_mask = ~torch.isnan(pred) & ~torch.isnan(target)
+        target_mean = batch_masked_mean(target, valid_mask.float(), keep_dim=True)
+
         known_mask = ~torch.isnan(target)
         if mask is not None:
             known_mask = known_mask & mask.bool()
         if self.n_crop > 0:
             known_mask = center_crop(known_mask, self.n_crop)
 
-        mask = mask.bool()
-        target = torch.where(known_mask, 0, target)
-        pred = torch.where(known_mask, 0, pred)
+        target = torch.where(known_mask, target_mean, target)
+        pred = torch.where(known_mask, target_mean, pred)
 
         target = self._unnormalize(target)
         pred = self._unnormalize(pred)

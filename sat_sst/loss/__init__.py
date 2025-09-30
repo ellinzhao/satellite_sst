@@ -1,10 +1,10 @@
 from .combined import CombinedLoss
 from .mask import MaskBCELoss
 from .ssim import GradientSSIMLoss, SSIMLoss
-from .sst_loss import GradWeightedLoss, MaskedLoss, PredMaskReconLoss
+from .sst_loss import GradientMaskedLoss, MaskedLoss
 
 
 __all__ = [
-    'CombinedLoss', 'GradWeightedLoss', 'MaskBCELoss', 'MaskedLoss',
-    'PredMaskReconLoss', 'GradientSSIMLoss', 'SSIMLoss',
+    'CombinedLoss', 'GradientMaskedLoss', 'MaskBCELoss', 'MaskedLoss',
+    'GradientSSIMLoss', 'SSIMLoss',
 ]
